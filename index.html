@@ -91,7 +91,7 @@ select:focus,input:focus{border-color:var(--accent);outline:0}
   function empty(){return{zhanna:[],denis:[]}}
   function blank(){return{bank:'',items:[{cat:'',pct:''}]}}
   function api(m,u,b){return fetch(u,{method:m,credentials:'same-origin',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined})}
-  function prune(){PEOPLE.forEach(function(p){data[p]=data[p].map(function(b){return{bank:b.bank,items:b.items.filter(function(i){return i.cat&&i.pct})}}).filter(function(b){return b.bank&&b.items.length})})}
+  function prune(){PEOPLE.forEach(function(x){var p=x[0];data[p]=data[p].map(function(b){return{bank:b.bank,items:b.items.filter(function(i){return i.cat&&i.pct})}}).filter(function(b){return b.bank&&b.items.length})})}
 
   function save(){clearTimeout(timer);st.textContent='…';
     timer=setTimeout(function(){api('PUT','/api/data',data).then(function(r){
