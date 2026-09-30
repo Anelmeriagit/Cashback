@@ -40,6 +40,8 @@ main{padding:1.5rem 0 4rem}
 .row{display:flex;justify-content:space-between;gap:.5rem;padding:.55rem 0;border-bottom:1px solid var(--line)}
 .row:last-child{border-bottom:0}
 .pct{font-weight:700;color:var(--accent);white-space:nowrap}
+.row.best{background:color-mix(in srgb,var(--accent) 14%,transparent);border-radius:8px;padding-inline:.5rem;margin-inline:-.5rem}
+.row.dim{opacity:.45}
 select,input{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:.7rem .8rem;font:inherit;min-height:46px}
 select:focus,input:focus{border-color:var(--accent);outline:0}
 select.ph{color:var(--muted)}
@@ -106,22 +108,26 @@ select option{color:var(--text);background:var(--surface)}
     return '<option value="'+id+'"'+(id===sel?' selected':'')+(used&&used.indexOf(id)>-1&&id!==sel?' disabled':'')+'>'+t+'</option>'}).join('')}
   function badge(id){var b=BANKS[id];if(!b)return '';
     return '<span class="badge" aria-hidden="true"><img src="logos/'+id+'.svg" alt="" onerror="this.parentNode.classList.add(\'nologo\');this.remove()"><b>'+b.m+'</b></span>'}
+  function best(list){var m={},n={};list.forEach(function(b){b.items.forEach(function(i){var v=parseFloat(i.pct);
+      (n[i.cat]=n[i.cat]||{})[b.bank]=1;if(!(i.cat in m)||v>m[i.cat])m[i.cat]=v})});return{m:m,n:n}}
+  function fp(v){return String(v).replace('.',',')}
   function cls(v){return v?'':' class="ph"'}
   function style(id){var b=BANKS[id];return b?' style="--b:'+b.bg+';--f:'+b.fg+'"':''}
 
   function colHtml(p,name){
-    var list=data[p],h='<div class="col"><h2>'+name+'</h2>';
+    var list=data[p],bm=best(list),h='<div class="col"><h2>'+name+'</h2>';
     if(!edit){
       var shown=list.filter(function(b){return b.items.length});
       return h+(shown.length?shown.map(function(b){return '<section class="blk"'+style(b.bank)+'><div class="head">'+badge(b.bank)+'<h3>'+BANKS[b.bank].n+'</h3></div><div class="body">'+
-        b.items.map(function(i){return '<div class="row"><span>'+i.cat+'</span><span class="pct">'+i.pct+'%</span></div>'}).join('')+'</div></section>'}).join(''):'<p class="empty">Пусто</p>')+'</div>';
+        b.items.map(function(i){var c=Object.keys(bm.n[i.cat]).length>1?(parseFloat(i.pct)===bm.m[i.cat]?' best':' dim'):'';
+          return '<div class="row'+c+'"><span>'+i.cat+'</span><span class="pct">'+fp(i.pct)+'%</span></div>'}).join('')+'</div></section>'}).join(''):'<p class="empty">Пусто</p>')+'</div>';
     }
     var used=list.map(function(b){return b.bank}),ids=Object.keys(BANKS).map(function(k){return{id:k,t:BANKS[k].n}});
     return h+list.map(function(b,i){var d=' data-p="'+p+'" data-b="'+i+'"';
       return '<section class="blk"'+style(b.bank)+'><div class="head">'+badge(b.bank)+'<select data-k="bank"'+d+cls(b.bank)+' aria-label="Банк">'+opts(ids,b.bank,'Банк',used)+'</select>'+
         '<button class="x" data-act="delb"'+d+' aria-label="Удалить банк" type="button">✕</button></div><div class="body">'+
         b.items.map(function(r,j){var e=d+' data-r="'+j+'"';return '<div class="r"><select data-k="cat"'+e+cls(r.cat)+' aria-label="Категория">'+opts(CATS,r.cat,'Категория')+'</select>'+
-          '<select data-k="pct"'+e+cls(r.pct)+' aria-label="Процент">'+opts(PCTS.map(function(x){return{id:x,t:x+' %'}}),r.pct,'%')+'</select>'+
+          '<select data-k="pct"'+e+cls(r.pct)+' aria-label="Процент">'+opts(PCTS.map(function(x){return{id:x,t:fp(x)+' %'}}),r.pct,'%')+'</select>'+
           '<button class="x" data-act="delr"'+e+' aria-label="Удалить кешбэк" type="button">✕</button></div>'}).join('')+
         '<div class="acts"><button class="btn" data-act="addr"'+d+' type="button">+ Кешбэк</button>'+
         '<button class="btn" data-act="addb" data-p="'+p+'" type="button"'+(list.length>=Object.keys(BANKS).length?' disabled':'')+'>+ Банк</button></div></div></section>'}).join('')+'</div>';
