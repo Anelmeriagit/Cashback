@@ -27,7 +27,8 @@ header{border-bottom:1px solid var(--line)}
 main{padding:1.5rem 0 4rem}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),384px));justify-content:center;gap:1.5rem;align-items:start}
 .col>h2{margin:0 0 .75rem;font-size:1.25rem;text-align:center}
-.blk{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:1rem;animation:in .35s ease both}
+.blk{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:1rem}
+.first .blk{animation:in .35s ease both}
 @keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .head{display:flex;align-items:center;gap:.6rem;padding:.7rem .8rem;background:var(--b,var(--line));color:var(--f,var(--text))}
 .badge{position:relative;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.18);display:grid;place-items:center;font-weight:800;font-size:.75rem;flex:none;overflow:hidden}
@@ -56,7 +57,7 @@ select:focus,input:focus{border-color:var(--accent);outline:0}
 .login .f{margin-bottom:1rem}
 .login .done{width:100%;margin:0}
 .err{color:var(--err);font-size:.9rem;min-height:1.3em;margin:0 0 .75rem}
-@media(prefers-reduced-motion:reduce){.blk{animation:none}}
+@media(prefers-reduced-motion:reduce){.first .blk{animation:none}}
 </style>
 </head>
 <body>
@@ -120,7 +121,13 @@ select:focus,input:focus{border-color:var(--accent);outline:0}
         '<div class="acts"><button class="btn" data-act="addr"'+d+' type="button">+ Кешбэк</button>'+
         '<button class="btn" data-act="addb" data-p="'+p+'" type="button"'+(list.length>=Object.keys(BANKS).length?' disabled':'')+'>+ Банк</button></div></div></section>'}).join('')+'</div>';
   }
-  function render(){app.innerHTML='<div class="cols">'+PEOPLE.map(function(x){return colHtml(x[0],x[1])}).join('')+'</div>'+(edit?'<button class="done" data-act="done" type="button">Готово</button>':'')}
+  function render(){
+    var a=document.activeElement,d=a&&a.dataset,key=d&&(d.k||d.act)?{k:d.k,act:d.act,p:d.p,b:d.b,r:d.r}:null,y=window.scrollY;
+    app.innerHTML='<div class="cols">'+PEOPLE.map(function(x){return colHtml(x[0],x[1])}).join('')+'</div>'+(edit?'<button class="done" data-act="done" type="button">Готово</button>':'');
+    window.scrollTo(0,y);
+    if(key){var q='['+(key.k?'data-k="'+key.k+'"':'data-act="'+key.act+'"')+']'+(key.p!==undefined?'[data-p="'+key.p+'"]':'')+(key.b!==undefined?'[data-b="'+key.b+'"]':'')+(key.r!==undefined?'[data-r="'+key.r+'"]':'');
+      var n=app.querySelector(q);if(n)n.focus({preventScroll:true})}
+  }
 
   function ui(on){editBtn.hidden=!on;outBtn.hidden=!on;if(!on){st.textContent='';edit=false;editBtn.setAttribute('aria-pressed','false')}}
   function toggle(on){edit=on;editBtn.setAttribute('aria-pressed',on);
@@ -154,7 +161,7 @@ select:focus,input:focus{border-color:var(--accent);outline:0}
   function boot(){api('GET','/api/data').then(function(r){
     if(r.status===401){showLogin();return}
     if(!r.ok)throw 0;
-    return r.json().then(function(j){data={zhanna:j.data.zhanna||[],denis:j.data.denis||[]};ui(true);render()})
+    return r.json().then(function(j){data={zhanna:j.data.zhanna||[],denis:j.data.denis||[]};ui(true);app.classList.add('first');render();setTimeout(function(){app.classList.remove('first')},600)})
   }).catch(function(){app.innerHTML='<p class="empty">Не удалось загрузить данные. Обновите страницу.</p>'})}
 
   var root=document.documentElement,tb=document.getElementById('themeBtn');
