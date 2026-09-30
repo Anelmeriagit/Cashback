@@ -30,9 +30,11 @@ main{padding:1.5rem 0 4rem}
 .blk{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:1rem}
 .first .blk{animation:in .35s ease both}
 @keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-.head{display:flex;align-items:center;gap:.6rem;padding:.7rem .8rem;background:var(--b,var(--line));color:var(--f,var(--text))}
-.badge{position:relative;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.18);display:grid;place-items:center;font-weight:800;font-size:.75rem;flex:none;overflow:hidden}
-.badge img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#fff;padding:4px}
+.head{display:flex;align-items:center;gap:.6rem;padding:.7rem .8rem;background:#2b2f36;color:#fff}
+.badge{flex:none;display:flex;align-items:center}
+.badge img{width:32px;height:32px;display:block}
+.badge b{display:none;font-size:.9rem;color:var(--f,#fff)}
+.badge.nologo b{display:block}
 .head h3{margin:0;font-size:1.05rem;flex:1}
 .body{padding:.9rem}
 .row{display:flex;justify-content:space-between;gap:.5rem;padding:.55rem 0;border-bottom:1px solid var(--line)}
@@ -40,7 +42,9 @@ main{padding:1.5rem 0 4rem}
 .pct{font-weight:700;color:var(--accent);white-space:nowrap}
 select,input{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:.7rem .8rem;font:inherit;min-height:46px}
 select:focus,input:focus{border-color:var(--accent);outline:0}
-.head select{border-width:2px}
+select.ph{color:var(--muted)}
+select option{color:var(--text);background:var(--surface)}
+.head select{border-width:1px}
 .r{display:grid;grid-template-columns:1fr 84px 32px;gap:.4rem;margin-bottom:.6rem;align-items:center}
 .x{border:0;background:none;color:var(--muted);font-size:20px;cursor:pointer;height:36px}
 .x:hover{color:var(--err)}
@@ -98,10 +102,11 @@ select:focus,input:focus{border-color:var(--accent);outline:0}
     timer=setTimeout(function(){api('PUT','/api/data',data).then(function(r){
       if(r.status===401){showLogin();return}st.textContent=r.ok?'✓':'Ошибка'}).catch(function(){st.textContent='Ошибка'})},400)}
 
-  function opts(list,sel,ph,used){return '<option value="">'+ph+'</option>'+list.map(function(v){var id=v.id||v,t=v.t||v;
+  function opts(list,sel,ph,used){return '<option value="" disabled hidden'+(sel?'':' selected')+'>'+ph+'</option>'+list.map(function(v){var id=v.id||v,t=v.t||v;
     return '<option value="'+id+'"'+(id===sel?' selected':'')+(used&&used.indexOf(id)>-1&&id!==sel?' disabled':'')+'>'+t+'</option>'}).join('')}
-  function badge(id){var b=BANKS[id];if(!b)return '<span class="badge" aria-hidden="true">?</span>';
-    return '<span class="badge" aria-hidden="true">'+b.m+'<img src="logos/'+id+'.svg" alt="" onerror="this.remove()"></span>'}
+  function badge(id){var b=BANKS[id];if(!b)return '';
+    return '<span class="badge" aria-hidden="true"><img src="logos/'+id+'.svg" alt="" onerror="this.parentNode.classList.add(\'nologo\');this.remove()"><b>'+b.m+'</b></span>'}
+  function cls(v){return v?'':' class="ph"'}
   function style(id){var b=BANKS[id];return b?' style="--b:'+b.bg+';--f:'+b.fg+'"':''}
 
   function colHtml(p,name){
@@ -113,10 +118,10 @@ select:focus,input:focus{border-color:var(--accent);outline:0}
     }
     var used=list.map(function(b){return b.bank}),ids=Object.keys(BANKS).map(function(k){return{id:k,t:BANKS[k].n}});
     return h+list.map(function(b,i){var d=' data-p="'+p+'" data-b="'+i+'"';
-      return '<section class="blk"'+style(b.bank)+'><div class="head">'+badge(b.bank)+'<select data-k="bank"'+d+' aria-label="Банк">'+opts(ids,b.bank,'Банк',used)+'</select>'+
+      return '<section class="blk"'+style(b.bank)+'><div class="head">'+badge(b.bank)+'<select data-k="bank"'+d+cls(b.bank)+' aria-label="Банк">'+opts(ids,b.bank,'Банк',used)+'</select>'+
         '<button class="x" data-act="delb"'+d+' aria-label="Удалить банк" type="button">✕</button></div><div class="body">'+
-        b.items.map(function(r,j){var e=d+' data-r="'+j+'"';return '<div class="r"><select data-k="cat"'+e+' aria-label="Категория">'+opts(CATS,r.cat,'Категория')+'</select>'+
-          '<select data-k="pct"'+e+' aria-label="Процент">'+opts(PCTS.map(function(x){return{id:x,t:x+' %'}}),r.pct,'%')+'</select>'+
+        b.items.map(function(r,j){var e=d+' data-r="'+j+'"';return '<div class="r"><select data-k="cat"'+e+cls(r.cat)+' aria-label="Категория">'+opts(CATS,r.cat,'Категория')+'</select>'+
+          '<select data-k="pct"'+e+cls(r.pct)+' aria-label="Процент">'+opts(PCTS.map(function(x){return{id:x,t:x+' %'}}),r.pct,'%')+'</select>'+
           '<button class="x" data-act="delr"'+e+' aria-label="Удалить кешбэк" type="button">✕</button></div>'}).join('')+
         '<div class="acts"><button class="btn" data-act="addr"'+d+' type="button">+ Кешбэк</button>'+
         '<button class="btn" data-act="addb" data-p="'+p+'" type="button"'+(list.length>=Object.keys(BANKS).length?' disabled':'')+'>+ Банк</button></div></div></section>'}).join('')+'</div>';
@@ -135,7 +140,7 @@ select:focus,input:focus{border-color:var(--accent);outline:0}
   editBtn.addEventListener('click',function(){toggle(!edit)});
 
   app.addEventListener('change',function(e){var t=e.target,k=t.dataset.k;if(!k)return;
-    var b=data[t.dataset.p][+t.dataset.b];if(k==='bank'){b.bank=t.value;render()}else{b.items[+t.dataset.r][k]=t.value}save()});
+    var b=data[t.dataset.p][+t.dataset.b];if(k==='bank'){b.bank=t.value;render()}else{b.items[+t.dataset.r][k]=t.value;t.classList.toggle('ph',!t.value)}save()});
   app.addEventListener('click',function(e){var t=e.target.closest('[data-act]');if(!t)return;
     var a=t.dataset.act,p=t.dataset.p,i=+t.dataset.b,j=+t.dataset.r;
     if(a==='done')return toggle(false);
