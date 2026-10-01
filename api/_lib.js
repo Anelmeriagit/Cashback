@@ -76,7 +76,7 @@ const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 export const PART_RE = /^(\d{4}-(0[1-9]|1[0-2]):(zhanna|denis)|custom)$/;
 
 export function curMonth() {
-  const p = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
   return p.find((x) => x.type === 'year').value + '-' + p.find((x) => x.type === 'month').value;
 }
 export function shiftMonth(k, n) {
