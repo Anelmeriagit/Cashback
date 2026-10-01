@@ -59,46 +59,79 @@ export function cleanCustom(list) {
   return out;
 }
 
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+export const PART_RE = /^(\d{4}-(0[1-9]|1[0-2]):(zhanna|denis)|custom)$/;
+
+export function curMonth() {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
+  return p.find((x) => x.type === 'year').value + '-' + p.find((x) => x.type === 'month').value;
+}
+export function shiftMonth(k, n) {
+  const [y, m] = k.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+
+function cleanBlocks(list, allowed) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .filter((b) => b && BANKS.includes(b.bank) && !seen.has(b.bank) && seen.add(b.bank))
+    .map((b) => ({
+      bank: b.bank,
+      items: (Array.isArray(b.items) ? b.items : [])
+        .filter((i) => i && allowed.has(i.cat) && PCTS.includes(i.pct))
+        .slice(0, 60)
+        .map((i) => ({ cat: i.cat, pct: i.pct })),
+    }));
+}
+
+// Документ: { months: { 'YYYY-MM': { zhanna: [...], denis: [...] } }, custom: [...] }
 export function clean(d) {
-  const out = {};
-  out.custom = cleanCustom(d && d.custom);
-  const allowed = new Set([...CATS, ...out.custom]);
-  for (const p of PEOPLE) {
-    const seen = new Set();
-    const list = Array.isArray(d && d[p]) ? d[p] : [];
-    out[p] = list
-      .filter((b) => b && BANKS.includes(b.bank) && !seen.has(b.bank) && seen.add(b.bank))
-      .map((b) => ({
-        bank: b.bank,
-        items: (Array.isArray(b.items) ? b.items : [])
-          .filter((i) => i && allowed.has(i.cat) && PCTS.includes(i.pct))
-          .slice(0, 60)
-          .map((i) => ({ cat: i.cat, pct: i.pct })),
-      }));
+  const custom = cleanCustom(d && d.custom);
+  const allowed = new Set([...CATS, ...custom]);
+  const src = d && d.months && typeof d.months === 'object' ? d.months : {};
+  const months = {};
+  for (const k of Object.keys(src).filter((k) => MONTH_RE.test(k)).sort().slice(-60)) {
+    const m = src[k] || {};
+    const v = { zhanna: cleanBlocks(m.zhanna, allowed), denis: cleanBlocks(m.denis, allowed) };
+    if (v.zhanna.length || v.denis.length) months[k] = v;
   }
-  return out;
+  return { months, custom };
 }
 
 const path = (user) => `data/${crypto.createHash('sha256').update(user).digest('hex').slice(0, 32)}.json`;
 
-export const PARTS = ['zhanna', 'denis', 'custom'];
-export const cleanRev = (r) =>
-  Object.fromEntries(PARTS.map((k) => [k, Number.isInteger(r && r[k]) && r[k] >= 0 ? r[k] : 0]));
+export const cleanRev = (r) => {
+  const out = {};
+  for (const [k, v] of Object.entries(r && typeof r === 'object' ? r : {})) {
+    if (PART_RE.test(k) && Number.isInteger(v) && v >= 0) out[k] = v;
+  }
+  return out;
+};
 export const isPrecond = (e) => /precondition|already\s*exists/i.test(String(e && (e.name + ' ' + e.message)));
 const isMissing = (e) => /not\s*found|404/i.test(String(e && (e.message || e.name)));
-const fresh = () => ({ ...clean({}), rev: cleanRev() });
+const fresh = () => ({ ...clean({}), rev: {} });
 
-// Читает документ вместе с ETag (нужен для условной записи) и версиями столбцов.
+// Читает документ с ETag. Старый формат (zhanna/denis без месяцев) переносится в текущий месяц.
 export async function readDoc(user) {
   try {
     const r = await get(path(user), { access: 'private', useCache: false });
-    if (!r || r.statusCode !== 200) return { doc: fresh(), etag: null };
+    if (!r || r.statusCode !== 200) return { doc: fresh(), etag: null, legacy: false };
     const raw = JSON.parse(await new Response(r.stream).text());
     let etag = r.blob && r.blob.etag;
     if (!etag) etag = (await head(path(user))).etag;
-    return { doc: { ...clean(raw), rev: cleanRev(raw.rev) }, etag };
+    if (raw && raw.months === undefined && (raw.zhanna || raw.denis)) {
+      const m = curMonth();
+      const old = raw.rev && typeof raw.rev === 'object' ? raw.rev : {};
+      const rev = {};
+      for (const p of PEOPLE) if (Number.isInteger(old[p])) rev[`${m}:${p}`] = old[p];
+      if (Number.isInteger(old.custom)) rev.custom = old.custom;
+      const src = { custom: raw.custom, months: { [m]: { zhanna: raw.zhanna, denis: raw.denis } } };
+      return { doc: { ...clean(src), rev: cleanRev(rev) }, etag, legacy: true };
+    }
+    return { doc: { ...clean(raw), rev: cleanRev(raw && raw.rev) }, etag, legacy: false };
   } catch (e) {
-    if (isMissing(e)) return { doc: fresh(), etag: null };
+    if (isMissing(e)) return { doc: fresh(), etag: null, legacy: false };
     throw e;
   }
 }
@@ -110,4 +143,15 @@ export async function writeDoc(user, doc, etag, force) {
   if (force) return put(path(user), body, { ...base, allowOverwrite: true });
   if (etag) return put(path(user), body, { ...base, allowOverwrite: true, ifMatch: etag });
   return put(path(user), body, { ...base, allowOverwrite: false });
+}
+
+// Читает документ; если он в старом формате, один раз сохраняет его в новом.
+export async function loadDoc(user) {
+  let r = await readDoc(user);
+  if (r.legacy) {
+    try { await writeDoc(user, r.doc, r.etag); } catch (e) { if (!isPrecond(e)) throw e; }
+    const r2 = await readDoc(user);
+    if (!r2.legacy) r = r2;
+  }
+  return r;
 }
