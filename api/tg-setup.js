@@ -1,4 +1,4 @@
-import { tg, webhookSecret, authed } from './_bot.js';
+import { tg, webhookSecret, authed, BOT_COMMANDS } from './_bot.js';
 
 // Однократная регистрация вебхука: открыть /api/tg-setup?key=<CRON_SECRET> на боевом домене.
 export default async function handler(req, res) {
@@ -8,6 +8,8 @@ export default async function handler(req, res) {
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const url = `https://${host}/api/telegram`;
     await tg('setWebhook', { url, secret_token: webhookSecret(), allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
+    await tg('setMyCommands', { commands: BOT_COMMANDS });
+    await tg('setChatMenuButton', { menu_button: { type: 'commands' } });
     const info = await tg('getWebhookInfo');
     return res.status(200).json({ ok: true, url, info });
   } catch (e) {

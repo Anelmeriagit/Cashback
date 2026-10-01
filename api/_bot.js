@@ -201,6 +201,39 @@ export async function isFilled(person, month) {
   return list.some((b) => (b.items || []).some((i) => i.cat && i.pct));
 }
 
+/* ---------- текст «Показать кешбэки» ---------- */
+const BANK_NAMES = { otp: 'ОТП', alfa: 'Альфа', vtb: 'ВТБ', halva: 'Халва', sber: 'Сбер' };
+const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const monthLabel = (k) => { const [y, m] = k.split('-'); return MONTHS[+m - 1] + ' ' + y; };
+export const blocksOf = (doc, month, p) => ((doc.months[month] && doc.months[month][p]) || []).filter((b) => b.items && b.items.length);
+
+function personText(name, list) {
+  if (!list.length) return name + '\nПока не заполнено';
+  return name + '\n' + list.map((b) => '\n' + (BANK_NAMES[b.bank] || b.bank) + '\n' +
+    b.items.map((i) => '• ' + i.cat + ' — ' + String(i.pct).replace('.', ',') + '%').join('\n')).join('\n');
+}
+
+// Тексты сообщений: текущий месяц и, если кто-то уже заполнил, следующий.
+export function cashbackTexts(doc, curMonth) {
+  const months = [curMonth];
+  const nxt = shiftMonth(curMonth, 1);
+  if (Object.keys(PERSONS).some((p) => blocksOf(doc, nxt, p).length)) months.push(nxt);
+  return months.map((mo) => 'Кешбэки, ' + monthLabel(mo) + '\n\n' +
+    ['denis', 'zhanna'].map((p) => personText(PERSONS[p].name, blocksOf(doc, mo, p))).join('\n\n'));
+}
+
+// Telegram принимает не больше 4096 символов в сообщении: режем по строкам.
+export function chunkText(text, max = 3800) {
+  const out = [];
+  let cur = '';
+  for (const line of text.split('\n')) {
+    if (cur && (cur + '\n' + line).length > max) { out.push(cur); cur = line; }
+    else cur = cur ? cur + '\n' + line : line;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
 /* ---------- Telegram ---------- */
 const token = () => process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || '';
 export const webhookSecret = () => crypto.createHash('sha256').update('wh:' + token()).digest('hex');
@@ -228,6 +261,9 @@ export function safeEq(a, b) {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
+
+// Меню бота (кнопка «Меню» слева от поля ввода)
+export const BOT_COMMANDS = [{ command: 'cashback', description: 'Показать кешбэки' }];
 
 // Доступ к служебным адресам (/api/cron, /api/tg-setup): тот же CRON_SECRET, который Vercel шлёт в cron.
 export function authed(req) {

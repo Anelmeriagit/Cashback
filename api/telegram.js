@@ -1,4 +1,5 @@
-import { PERSONS, REMINDERS, personOf, tg, mutate, readState, markDone, isFilled, targetMonth, webhookSecret, safeEq } from './_bot.js';
+import { loadDoc } from './_lib.js';
+import { PERSONS, REMINDERS, personOf, tg, mutate, readState, markDone, isFilled, targetMonth, webhookSecret, safeEq, mskNow, cashbackTexts, chunkText } from './_bot.js';
 
 const CM_RE = /^\d{4}-\d{2}$/;
 
@@ -8,7 +9,17 @@ async function onMessage(m) {
   if (!p || !m.chat || m.chat.type !== 'private') return;
   if (/^\/start(\s|@|$)/i.test(String(m.text || ''))) {
     await mutate((st) => { st.users[p] = { chat: m.chat.id, username: m.from.username }; });
-    await tg('sendMessage', { chat_id: m.chat.id, text: `Привет, ${PERSONS[p].name}! Бот подключён: напоминания будут приходить сюда.` });
+    await tg('sendMessage', { chat_id: m.chat.id, text: `Привет, ${PERSONS[p].name}! Бот подключён: напоминания будут приходить сюда. Список кешбэков — в меню слева от поля ввода.` });
+    return;
+  }
+  if (/^\/cashback(\s|@|$)/i.test(String(m.text || ''))) {
+    let texts;
+    try { texts = cashbackTexts((await loadDoc(process.env.AUTH_USER)).doc, mskNow().month); }
+    catch (e) {
+      console.error(e);
+      return tg('sendMessage', { chat_id: m.chat.id, text: 'Не удалось загрузить данные с сайта. Попробуйте чуть позже.' });
+    }
+    for (const t of texts) for (const part of chunkText(t)) await tg('sendMessage', { chat_id: m.chat.id, text: part });
   }
 }
 
