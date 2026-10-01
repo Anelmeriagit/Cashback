@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import { get, put } from '@vercel/blob';
+import * as B from '@vercel/blob';
+const { get, put, head } = B;
 
 export const PEOPLE = ['zhanna', 'denis'];
 export const BANKS = ['otp', 'alfa', 'vtb', 'halva', 'sber'];
@@ -80,19 +81,33 @@ export function clean(d) {
 
 const path = (user) => `data/${crypto.createHash('sha256').update(user).digest('hex').slice(0, 32)}.json`;
 
-export async function loadData(user) {
+export const PARTS = ['zhanna', 'denis', 'custom'];
+export const cleanRev = (r) =>
+  Object.fromEntries(PARTS.map((k) => [k, Number.isInteger(r && r[k]) && r[k] >= 0 ? r[k] : 0]));
+export const isPrecond = (e) => /precondition|already\s*exists/i.test(String(e && (e.name + ' ' + e.message)));
+const isMissing = (e) => /not\s*found|404/i.test(String(e && (e.message || e.name)));
+const fresh = () => ({ ...clean({}), rev: cleanRev() });
+
+// Читает документ вместе с ETag (нужен для условной записи) и версиями столбцов.
+export async function readDoc(user) {
   try {
     const r = await get(path(user), { access: 'private', useCache: false });
-    if (!r || r.statusCode !== 200) return clean({});
-    return clean(JSON.parse(await new Response(r.stream).text()));
+    if (!r || r.statusCode !== 200) return { doc: fresh(), etag: null };
+    const raw = JSON.parse(await new Response(r.stream).text());
+    let etag = r.blob && r.blob.etag;
+    if (!etag) etag = (await head(path(user))).etag;
+    return { doc: { ...clean(raw), rev: cleanRev(raw.rev) }, etag };
   } catch (e) {
-    if (/not\s*found|404/i.test(String(e && (e.message || e.name)))) return clean({});
+    if (isMissing(e)) return { doc: fresh(), etag: null };
     throw e;
   }
 }
 
-export async function saveData(user, data) {
-  await put(path(user), JSON.stringify(data), {
-    access: 'private', allowOverwrite: true, addRandomSuffix: false, contentType: 'application/json',
-  });
+// Запись только если файл не менялся с момента чтения (ifMatch). force — запасной вариант.
+export async function writeDoc(user, doc, etag, force) {
+  const body = JSON.stringify(doc);
+  const base = { access: 'private', addRandomSuffix: false, contentType: 'application/json' };
+  if (force) return put(path(user), body, { ...base, allowOverwrite: true });
+  if (etag) return put(path(user), body, { ...base, allowOverwrite: true, ifMatch: etag });
+  return put(path(user), body, { ...base, allowOverwrite: false });
 }
