@@ -15,10 +15,14 @@
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;transition:background .3s,color .3s}
 .wrap{width:min(100% - 2rem,800px);margin-inline:auto}
 header{border-bottom:1px solid var(--line)}
-.bar{display:flex;align-items:center;justify-content:space-between;height:60px}
+.bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.25rem 1rem;min-height:60px;padding:.4rem 0}
+.nav{display:flex;align-items:center;gap:1.25rem}
+.nav a{color:var(--muted);text-decoration:none;font-weight:600;padding:.35rem 0;border-bottom:2px solid transparent;transition:color .2s,border-color .2s}
+.nav a:hover{color:var(--text)}
+.nav a.on{color:var(--text);border-bottom-color:var(--accent)}
 .logo{font-weight:700;display:flex;align-items:center;gap:.5rem}
 .logo i{width:12px;height:12px;border-radius:50%;background:var(--accent);display:inline-block}
-.tools{display:flex;gap:.5rem;align-items:center}
+.tools{display:flex;gap:.5rem;align-items:center;margin-left:auto}
 #st{color:var(--muted);font-size:.85rem;min-width:1.5rem;text-align:right}
 .icon-btn{border:1px solid var(--line);background:var(--surface);color:var(--text);width:40px;height:40px;border-radius:12px;cursor:pointer;font-size:18px;line-height:1}
 .icon-btn:hover,.icon-btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
@@ -112,13 +116,33 @@ select option{color:var(--text);background:var(--surface)}
 .chip{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:.4rem .9rem;font:inherit;font-size:.9rem;cursor:pointer}
 .chip:hover,.chip.on{border-color:var(--accent);color:var(--accent)}
 .swap .cols{animation:in .35s ease both}
+/* --- напоминания --- */
+.rwrap{width:min(100% - 2rem,640px);margin-inline:auto}
+.rsub{text-align:center;color:var(--muted);font-size:.9rem;margin:-.5rem 0 1.25rem}
+#remWarn{margin:0 0 1rem}
+.warn a{color:inherit;font-weight:600}
+.rc{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1rem;margin-bottom:1rem}
+.rh{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+.rh h3{margin:0 0 .25rem;font-size:1.05rem}
+.rd{margin:0;color:var(--muted);font-size:.85rem}
+.rc.off .rh h3,.rc.off .rd{opacity:.55}
+.sw{flex:none;position:relative;width:52px;height:30px;padding:0;border-radius:999px;border:1px solid var(--line);background:var(--bg);cursor:pointer;transition:background .2s,border-color .2s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
+.sw[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 22%,transparent);border-color:var(--accent)}
+.sw[aria-checked="true"]::after{transform:translateX(22px);background:var(--accent)}
+.rw{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1.25rem;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--line);font-size:.9rem}
+.rw>span{color:var(--muted)}
+.rc.off .rw{opacity:.55}
+.chk{display:inline-flex;align-items:center;gap:.5rem;min-height:36px;cursor:pointer}
+.chk input{width:18px;height:18px;min-height:0;padding:0;margin:0;accent-color:var(--accent);cursor:pointer}
+.rmsg{text-align:center;color:var(--muted);font-size:.85rem;min-height:1.3em;margin:0}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 <header>
   <div class="wrap bar">
-    <div class="logo"><i></i>CashBack</div>
+    <nav class="nav" aria-label="Разделы"><a class="logo on" id="navMain" href="#main" aria-current="page"><i></i>CashBack</a><a id="navRem" href="#reminders">Напоминания</a></nav>
     <div class="tools">
       <span id="st" role="status" aria-live="polite"></span>
       <button class="icon-btn" id="editBtn" type="button" aria-pressed="false" aria-label="Режим редактирования" hidden>✎</button>
@@ -138,6 +162,15 @@ select option{color:var(--text);background:var(--surface)}
   <div id="foot"></div>
   <div class="histw"><button class="hlink" id="hBtn" data-h="toggle" type="button" aria-expanded="false" aria-controls="hist">История</button></div>
   <section class="hist" id="hist" inert><div class="hi"><div id="hBody"></div></div></section>
+</main>
+<main id="remStage" hidden>
+  <div class="rwrap">
+    <h2 class="mt">Напоминания</h2>
+    <p class="rsub">Уведомления приходят в Telegram с 13:00 до 18:00 по Москве.</p>
+    <div class="warn" id="remWarn" role="status" hidden></div>
+    <div id="remBody"></div>
+    <p class="rmsg" id="remMsg" role="status" aria-live="polite"></p>
+  </div>
 </main>
 
 <script>
@@ -344,8 +377,8 @@ select option{color:var(--text);background:var(--surface)}
     save(parts);render()});
 
   /* ---------- вход / загрузка ---------- */
-  function ui(on){editBtn.hidden=!on;outBtn.hidden=!on;if(!on){st.textContent='';edit=false;editBtn.setAttribute('aria-pressed','false')}}
-  function showLogin(){ui(false);stage.hidden=true;data=empty();loggedIn=false;dirty={};conflict=null;flight=false;rev={};showWarn();
+  function ui(on){editBtn.hidden=!on||page!=='main';outBtn.hidden=!on;if(!on){st.textContent='';edit=false;editBtn.setAttribute('aria-pressed','false')}}
+  function showLogin(){ui(false);stage.hidden=true;remStage.hidden=true;data=empty();loggedIn=false;dirty={};conflict=null;flight=false;rev={};showWarn();
     loginRoot.innerHTML='<form class="login" id="lf" novalidate><h2>Вход</h2>'+
       '<div class="f"><label for="u">Никнейм</label><input id="u" autocomplete="username" required></div>'+
       '<div class="f"><label for="pw">Пароль</label><input id="pw" type="password" autocomplete="current-password" required></div>'+
@@ -360,14 +393,58 @@ select option{color:var(--text);background:var(--surface)}
   function boot(){api('GET','/api/data').then(function(r){
     if(r.status===401){showLogin();return}
     if(!r.ok)throw 0;
-    return r.json().then(function(j){data=norm(j.data);rev=j.rev||{};loggedIn=true;ck=clock();loginRoot.innerHTML='';stage.hidden=false;ui(true);
+    return r.json().then(function(j){data=norm(j.data);rev=j.rev||{};loggedIn=true;ck=clock();loginRoot.innerHTML='';ui(true);applyPage();
       stage.classList.add('first');render();setTimeout(function(){stage.classList.remove('first')},600)})
   }).catch(function(){loginRoot.innerHTML='<p class="empty">Не удалось загрузить данные. Обновите страницу.</p>'})}
 
   /* ---------- проверка даты: при открытии и при возврате на вкладку, без таймера ---------- */
   function tick(){var n=clock();if(n.cur===ck.cur&&n.late===ck.late&&n.day===ck.day)return;
     var rolled=n.cur!==ck.cur;ck=n;if(loggedIn){render();if(rolled)refresh()}}
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh()}});
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh();if(loggedIn&&page==='rem')remLoad()}});
+
+  /* ---------- страницы и «Напоминания» ---------- */
+  var REM=[
+    {id:'cashback',t:'Выбор кешбэка',d:'25 и 28 числа, а если не отмечено — ещё раз на следующий день. Напоминает заполнить категории на следующий месяц.',w:['denis','zhanna']},
+    {id:'meters',t:'Счётчики',d:'2, 5 и 7 числа, пока каждый не нажмёт «Готово».',w:['denis','zhanna']},
+    {id:'halva',t:'Потратить Халву',d:'5, 10, 15, 20 и 25 числа, пока не нажато «Всё потрачено».',w:['denis','zhanna']},
+    {id:'mortgage',t:'Закинуть ипотеку',d:'22 числа, только для Дениса.',w:['denis']}
+  ];
+  var NM={denis:'Денис',zhanna:'Жанна'};
+  var remStage=$('remStage'),remBody=$('remBody'),remMsg=$('remMsg'),remWarn=$('remWarn'),navMain=$('navMain'),navRem=$('navRem'),rem=null;
+  function pageFromHash(){return location.hash==='#reminders'?'rem':'main'}
+  var page=pageFromHash();
+  function applyPage(){var prev=page;page=pageFromHash();
+    stage.hidden=!loggedIn||page!=='main';
+    remStage.hidden=!loggedIn||page!=='rem';
+    editBtn.hidden=!loggedIn||page!=='main';
+    navMain.classList.toggle('on',page==='main');navRem.classList.toggle('on',page==='rem');
+    if(page==='main')navMain.setAttribute('aria-current','page');else navMain.removeAttribute('aria-current');
+    if(page==='rem')navRem.setAttribute('aria-current','page');else navRem.removeAttribute('aria-current');
+    if(prev!==page)window.scrollTo(0,0);
+    if(loggedIn&&page==='rem')remLoad()}
+  window.addEventListener('hashchange',applyPage);
+
+  function remBuild(){remBody.innerHTML=REM.map(function(r){
+    return '<section class="rc" data-card="'+r.id+'"><div class="rh"><div><h3>'+r.t+'</h3><p class="rd">'+r.d+'</p></div>'+
+      '<button class="sw" type="button" role="switch" aria-checked="true" aria-label="'+r.t+'" data-r="'+r.id+'" data-key="on"></button></div>'+
+      '<div class="rw"><span>Кому:</span>'+r.w.map(function(p){return '<label class="chk"><input type="checkbox" data-r="'+r.id+'" data-key="'+p+'" checked>'+NM[p]+'</label>'}).join('')+'</div></section>'}).join('')}
+  function remSync(){if(!rem)return;
+    REM.forEach(function(r){var s=rem.settings[r.id]||{},on=s.on!==false,card=remBody.querySelector('[data-card="'+r.id+'"]');
+      card.classList.toggle('off',!on);
+      card.querySelector('.sw').setAttribute('aria-checked',on);
+      r.w.forEach(function(p){card.querySelector('input[data-key="'+p+'"]').checked=s[p]!==false})});
+    var miss=['denis','zhanna'].filter(function(p){return !rem.linked[p]}).map(function(p){return NM[p]});
+    remWarn.hidden=!miss.length;
+    if(miss.length)remWarn.innerHTML='<p>Бот ещё не подключён: '+miss.join(', ')+'. Откройте <a href="https://t.me/patyapatya_bot" target="_blank" rel="noopener">@patyapatya_bot</a> в Telegram и нажмите «Запустить».</p>'}
+  function remLoad(){api('GET','/api/reminders').then(function(r){if(r.status===401){showLogin();return}if(!r.ok)throw 0;
+    return r.json().then(function(j){rem=j;remSync()})}).catch(function(){remMsg.textContent='Не удалось загрузить настройки. Обновите страницу.'})}
+  function remSet(id,key,v){if(!rem)return;(rem.settings[id]=rem.settings[id]||{})[key]=v;remSync();remMsg.textContent='…';
+    api('PUT','/api/reminders',{id:id,key:key,value:v}).then(function(r){if(r.status===401){showLogin();return}if(!r.ok)throw 0;
+      return r.json().then(function(j){rem=j;remSync();remMsg.textContent='Сохранено ✓'})
+    }).catch(function(){remMsg.textContent='Не удалось сохранить';remLoad()})}
+  remBody.addEventListener('click',function(e){var b=e.target.closest('.sw');if(!b)return;remSet(b.dataset.r,'on',b.getAttribute('aria-checked')!=='true')});
+  remBody.addEventListener('change',function(e){var t=e.target;if(t.type!=='checkbox')return;remSet(t.dataset.r,t.dataset.key,t.checked)});
+  remBuild();
 
   /* ---------- тема ---------- */
   var root=document.documentElement,tb=$('themeBtn');
