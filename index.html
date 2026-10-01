@@ -93,6 +93,16 @@ select option{color:var(--text);background:var(--surface)}
 .login .f{margin-bottom:1rem}
 .login .done{width:100%;margin:0}
 .err{color:var(--err);font-size:.9rem;min-height:1.3em;margin:0 0 .75rem}
+.histw{text-align:center;margin-top:2.5rem}
+.hlink{background:none;border:0;color:var(--muted);font:inherit;font-size:.9rem;text-decoration:underline;cursor:pointer}
+.hlink:hover,.hlink[aria-expanded="true"]{color:var(--accent)}
+.hist{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .5s ease,opacity .5s ease}
+.hist.open{grid-template-rows:1fr;opacity:1}
+.hi{overflow:hidden;min-height:0;padding:3px}
+.chips{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin:1rem 0 1.25rem}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:.4rem .9rem;font:inherit;font-size:.9rem;cursor:pointer}
+.chip:hover,.chip.on{border-color:var(--accent);color:var(--accent)}
+.swap .cols{animation:in .35s ease both}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -117,6 +127,8 @@ select option{color:var(--text);background:var(--surface)}
     <section class="mp next" id="pNext" inert><div class="mi"><h2 class="mt" id="tNext"></h2><button class="lnk" data-m="close" type="button">скрыть</button><div id="bNext"></div></div></section>
   </div>
   <div id="foot"></div>
+  <div class="histw"><button class="hlink" id="hBtn" data-h="toggle" type="button" aria-expanded="false" aria-controls="hist">История</button></div>
+  <section class="hist" id="hist" inert><div class="hi"><div id="hBody"></div></div></section>
 </main>
 
 <script>
@@ -130,7 +142,7 @@ select option{color:var(--text);background:var(--surface)}
   var MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
   var $=function(id){return document.getElementById(id)};
   var stage=$('stage'),st=$('st'),editBtn=$('editBtn'),outBtn=$('outBtn'),warn=$('warn'),loginRoot=$('loginRoot'),prompt_=$('prompt'),months=$('months'),pNext=$('pNext');
-  var edit=false,data=empty(),timer,rev={},dirty={},flight=false,conflict=null,loggedIn=false,showNext=false,ck=clock();
+  var edit=false,data=empty(),timer,rev={},dirty={},flight=false,conflict=null,loggedIn=false,showNext=false,ck=clock(),histOpen=false,histMo=null,hCache='';
 
   /* ---------- даты ---------- */
   function pad(n){return(n<10?'0':'')+n}
@@ -206,9 +218,9 @@ select option{color:var(--text);background:var(--surface)}
       e.forEach(function(r){out[r.p+'|'+r.bank+'|'+c]=r.v===M?' best':(r.v===pm[r.p]?' good':' dim')})});
     return out}
 
-  function colHtml(mo,p,name){
+  function colHtml(mo,p,name,ro){
     var l=peek(mo,p),h='<div class="col"><h3>'+name+'</h3>';
-    if(!edit){
+    if(!edit||ro){
       var hm=hl(mo),shown=l.filter(function(b){return b.items.length});
       return h+(shown.length?shown.map(function(b){return '<section class="blk"><div class="head">'+badge(b.bank)+'<h3>'+BANKS[b.bank].n+'</h3></div><div class="body">'+
         b.items.map(function(i){var c=hm[p+'|'+b.bank+'|'+i.cat]||'';
@@ -224,7 +236,11 @@ select option{color:var(--text);background:var(--surface)}
         '<div class="acts"><button class="btn" data-act="addr"'+d+' type="button">+ Кешбэк</button>'+
         (last?'<button class="btn" data-act="addb" data-mo="'+mo+'" data-p="'+p+'" type="button"'+(l.length>=Object.keys(BANKS).length?' disabled':'')+'>+ Банк</button>':'')+'</div></div></section>'}).join('')+'</div>';
   }
-  function colsHtml(mo){return '<div class="cols">'+PEOPLE.map(function(x){return colHtml(mo,x[0],x[1])}).join('')+'</div>'}
+  function colsHtml(mo,ro){return '<div class="cols">'+PEOPLE.map(function(x){return colHtml(mo,x[0],x[1],ro)}).join('')+'</div>'}
+  function histMonths(){return Object.keys(data.months).filter(function(mo){return mo<ck.cur&&PEOPLE.some(function(x){return peek(mo,x[0]).some(function(b){return b.items.length})})}).sort().reverse()}
+  function histHtml(){var ms=histMonths();if(!ms.length)return '<p class="empty">История пока пуста: здесь появятся прошлые месяцы.</p>';
+    if(ms.indexOf(histMo)<0)histMo=ms[0];
+    return '<div class="chips">'+ms.map(function(m){return '<button class="chip'+(m===histMo?' on':'')+'" data-h="pick" data-mo="'+m+'" type="button">'+label(m)+'</button>'}).join('')+'</div>'+colsHtml(histMo,true)}
   function customHtml(){if(!data.custom.length)return '';
     return '<div class="cust"><h2>Свои категории</h2>'+data.custom.map(function(c,i){
       return '<div class="crow"><span>'+esc(c)+'</span><button class="x" data-act="rc" data-b="'+i+'" aria-label="Переименовать" type="button">✎</button><button class="x" data-act="dc" data-b="'+i+'" aria-label="Удалить" type="button">✕</button></div>'}).join('')+'</div>'}
@@ -239,12 +255,14 @@ select option{color:var(--text);background:var(--surface)}
 
   function render(){
     view();if(edit)ensureBlank();
-    var a=document.activeElement,d=a&&a.dataset,key=d&&(d.k||d.act)?{k:d.k,act:d.act,mo:d.mo,p:d.p,b:d.b,r:d.r}:null,y=window.scrollY;
+    var a=document.activeElement,d=a&&a.dataset,key=d&&(d.k||d.act||d.h)?{k:d.k,act:d.act,h:d.h,mo:d.mo,p:d.p,b:d.b,r:d.r}:null,y=window.scrollY;
     $('tCur').textContent=label(ck.cur);$('tNext').textContent=label(ck.nxt);
     $('bCur').innerHTML=colsHtml(ck.cur);$('bNext').innerHTML=colsHtml(ck.nxt);
     $('foot').innerHTML=edit?customHtml()+'<button class="done" data-act="done" type="button">Готово</button>':'';
+    var hh=histHtml();if(hh!==hCache){$('hBody').innerHTML=hh;hCache=hh}
+    $('hist').classList.toggle('open',histOpen);$('hist').inert=!histOpen;$('hBtn').setAttribute('aria-expanded',histOpen);
     window.scrollTo(0,y);
-    if(key){var q='['+(key.k?'data-k="'+key.k+'"':'data-act="'+key.act+'"')+']'+(key.mo!==undefined?'[data-mo="'+key.mo+'"]':'')+(key.p!==undefined?'[data-p="'+key.p+'"]':'')+(key.b!==undefined?'[data-b="'+key.b+'"]':'')+(key.r!==undefined?'[data-r="'+key.r+'"]':'');
+    if(key){var q='['+(key.k?'data-k="'+key.k+'"':key.act?'data-act="'+key.act+'"':'data-h="'+key.h+'"')+']'+(key.mo!==undefined?'[data-mo="'+key.mo+'"]':'')+(key.p!==undefined?'[data-p="'+key.p+'"]':'')+(key.b!==undefined?'[data-b="'+key.b+'"]':'')+(key.r!==undefined?'[data-r="'+key.r+'"]':'');
       var n=stage.querySelector(q);if(n)n.focus({preventScroll:true})}
   }
 
@@ -269,6 +287,10 @@ select option{color:var(--text);background:var(--surface)}
     else{b.items[+t.dataset.r][k]=t.value;t.classList.toggle('ph',!t.value)}
     save(ex)});
   stage.addEventListener('click',function(e){
+    var hb=e.target.closest('[data-h]');
+    if(hb){var hv=hb.dataset.h;
+      if(hv==='toggle'){histOpen=!histOpen;render();if(histOpen)setTimeout(function(){var b=$('hBtn');if(b.scrollIntoView)b.scrollIntoView({behavior:'smooth',block:'start'})},80);return}
+      if(hv==='pick'){histMo=hb.dataset.mo;var hbd=$('hBody');hbd.classList.add('swap');setTimeout(function(){hbd.classList.remove('swap')},450);return render()}}
     var m=e.target.closest('[data-m]');
     if(m){var w=m.dataset.m;
       if(w==='yes'){lset('nm-open',ck.cur)}else if(w==='hide'){lset('nm-snooze',ck.day)}else if(w==='close'){lset('nm-open','')}
@@ -313,10 +335,9 @@ select option{color:var(--text);background:var(--surface)}
       stage.classList.add('first');render();setTimeout(function(){stage.classList.remove('first')},600)})
   }).catch(function(){loginRoot.innerHTML='<p class="empty">Не удалось загрузить данные. Обновите страницу.</p>'})}
 
-  /* ---------- проверка дат в фоне ---------- */
+  /* ---------- проверка даты: при открытии и при возврате на вкладку, без таймера ---------- */
   function tick(){var n=clock();if(n.cur===ck.cur&&n.late===ck.late&&n.day===ck.day)return;
     var rolled=n.cur!==ck.cur;ck=n;if(loggedIn){render();if(rolled)refresh()}}
-  setInterval(tick,30000);
   document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh()}});
 
   /* ---------- тема ---------- */
