@@ -17,9 +17,11 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 header{border-bottom:1px solid var(--line)}
 .bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.25rem 1rem;min-height:60px;padding:.4rem 0}
 .nav{display:flex;align-items:center;gap:1.25rem}
-.nav a{color:var(--muted);text-decoration:none;font-weight:600;padding:.35rem 0;border-bottom:2px solid transparent;transition:color .2s,border-color .2s}
+.nav a{display:flex;align-items:center;gap:.5rem;color:var(--muted);text-decoration:none;font-weight:600;padding:.35rem 0;transition:color .2s}
+.nav a>span{border-bottom:2px solid transparent;transition:border-color .2s}
 .nav a:hover{color:var(--text)}
-.nav a.on{color:var(--text);border-bottom-color:var(--accent)}
+.nav a.on{color:var(--text)}
+.nav a.on>span{border-bottom-color:var(--accent)}
 .logo{font-weight:700;display:flex;align-items:center;gap:.5rem}
 .logo i{width:12px;height:12px;border-radius:50%;background:var(--accent);display:inline-block}
 .tools{display:flex;gap:.5rem;align-items:center;margin-left:auto}
@@ -142,7 +144,7 @@ select option{color:var(--text);background:var(--surface)}
 <body>
 <header>
   <div class="wrap bar">
-    <nav class="nav" aria-label="Разделы"><a class="logo on" id="navMain" href="#main" aria-current="page"><i></i>CashBack</a><a id="navRem" href="#reminders">Напоминания</a></nav>
+    <nav class="nav" aria-label="Разделы"><a class="logo on" id="navMain" href="#main" aria-current="page"><i></i><span>CashBack</span></a><a id="navRem" href="#reminders"><span>Напоминания</span></a></nav>
     <div class="tools">
       <span id="st" role="status" aria-live="polite"></span>
       <button class="icon-btn" id="editBtn" type="button" aria-pressed="false" aria-label="Режим редактирования" hidden>✎</button>
@@ -166,7 +168,7 @@ select option{color:var(--text);background:var(--surface)}
 <main id="remStage" hidden>
   <div class="rwrap">
     <h2 class="mt">Напоминания</h2>
-    <p class="rsub">Уведомления приходят в Telegram с 13:00 до 18:00 по Москве.</p>
+    <p class="rsub">Уведомления приходят в Telegram по московскому времени.</p>
     <div class="warn" id="remWarn" role="status" hidden></div>
     <div id="remBody"></div>
     <p class="rmsg" id="remMsg" role="status" aria-live="polite"></p>
@@ -404,10 +406,11 @@ select option{color:var(--text);background:var(--surface)}
 
   /* ---------- страницы и «Напоминания» ---------- */
   var REM=[
-    {id:'cashback',t:'Выбор кешбэка',d:'25 и 28 числа, а если не отмечено — ещё раз на следующий день. Напоминает заполнить категории на следующий месяц.',w:['denis','zhanna']},
-    {id:'meters',t:'Счётчики',d:'2, 5 и 7 числа, пока каждый не нажмёт «Готово».',w:['denis','zhanna']},
-    {id:'halva',t:'Потратить Халву',d:'5, 10, 15, 20 и 25 числа, пока не нажато «Всё потрачено».',w:['denis','zhanna']},
-    {id:'mortgage',t:'Закинуть ипотеку',d:'22 числа, только для Дениса.',w:['denis']}
+    {id:'cashback',t:'Выбор кешбэка',d:'25 и 28 числа около 18:00, а если не отмечено — ещё раз на следующий день. Напоминает заполнить категории на следующий месяц.',w:['denis','zhanna']},
+    {id:'meters',t:'Счётчики',d:'С 23 числа каждый день около 18:00, пока каждый не нажмёт «Готово».',w:['denis','zhanna']},
+    {id:'halva',t:'Потратить Халву',d:'7, 12, 17, 22 и 27 числа около 14:00, пока не нажато «Всё потрачено».',w:['denis','zhanna']},
+    {id:'mortgage',t:'Закинуть ипотеку',d:'22 числа около 14:00, только для Дениса.',w:['denis']},
+    {id:'daily',t:'Бить Денису жопу',d:'Каждый день около 14:00, только для Жанны.',w:['zhanna']}
   ];
   var NM={denis:'Денис',zhanna:'Жанна'};
   var remStage=$('remStage'),remBody=$('remBody'),remMsg=$('remMsg'),remWarn=$('remWarn'),navMain=$('navMain'),navRem=$('navRem'),rem=null;

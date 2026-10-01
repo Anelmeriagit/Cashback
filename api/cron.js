@@ -29,18 +29,20 @@ export default async function handler(req, res) {
         now = { month: q.date.slice(0, 7), date: q.date };
       }
       const { state } = await readState();
-      const plan = planDue(JSON.parse(JSON.stringify(state)), now);
+      const plan = planDue(JSON.parse(JSON.stringify(state)), now, q.slot);
       return res.status(200).json({ dry: true, date: now.date, linked: linkedOf(state), would_send: plan.map(({ id, p, cycle }) => ({ id, p, cycle })) });
     }
     if (q.date) return res.status(400).json({ error: 'date работает только с dry=1' });
 
     const now = mskNow();
-    const claims = await mutate((st) => planDue(st, now));
+    // Два запуска в сутки: «day» (14:00–15:00 МСК) и «evening» (18:00–19:00 МСК, /api/cron?slot=evening)
+    const slot = q.slot === 'evening' ? 'evening' : 'day';
+    const claims = await mutate((st) => planDue(st, now, slot));
     const sent = await Promise.all(claims.map(async (c) => {
       try { await sendReminder(c.chat, c.id, c.cycle); return { id: c.id, p: c.p, ok: true }; }
       catch (e) { console.error('send failed', c.id, c.p, e.message); return { id: c.id, p: c.p, ok: false, error: e.message }; }
     }));
-    return res.status(200).json({ date: now.date, sent });
+    return res.status(200).json({ date: now.date, slot, sent });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: 'failed', message: e.message });

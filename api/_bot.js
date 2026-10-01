@@ -27,6 +27,12 @@ export function mskNow(d = new Date()) {
 const pad = (n) => String(n).padStart(2, '0');
 const daysIn = (cm) => { const [y, m] = cm.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
 const days = (cm, list) => list.map((d) => cm + '-' + pad(d));
+const iso = (t) => new Date(t).toISOString().slice(0, 10);
+const eachDay = (a, b) => { const out = []; for (let t = a; t <= b; t += 864e5) out.push(iso(t)); return out; };
+// Все дни месяца
+const wholeMonth = (cm) => { const [y, m] = cm.split('-').map(Number); return eachDay(Date.UTC(y, m - 1, 1), Date.UTC(y, m - 1, daysIn(cm))); };
+// С 23 числа месяца до 22 числа следующего (включительно)
+const from23 = (cm) => { const [y, m] = cm.split('-').map(Number); return eachDay(Date.UTC(y, m - 1, 23), Date.UTC(y, m, 22)); };
 const okBtn = (id, label) => (cm) => [[{ text: label, callback_data: `ok|${id}|${cm}` }]];
 
 export const TEST_CYCLE = '2000-01'; // тестовый цикл для ручной проверки (/api/cron?send=...)
@@ -35,6 +41,7 @@ export const REMINDERS = {
   cashback: {
     who: ['denis', 'zhanna'],
     text: 'Привет! Не забудь выбрать кешбэк на новый период.',
+    slot: 'evening', // 18:00–19:00 МСК
     // 25 и 28 числа + последний раз на следующий день (29-го; если 29-го нет — 1-го числа следующего месяца)
     dates: (cm) => days(cm, [25, 28]).concat(daysIn(cm) >= 29 ? [cm + '-29'] : [shiftMonth(cm, 1) + '-01']),
     buttons: okBtn('cashback', 'Готово'),
@@ -43,14 +50,18 @@ export const REMINDERS = {
   meters: {
     who: ['denis', 'zhanna'],
     text: 'Привет! Отправь счётчики.',
-    dates: (cm) => days(cm, [2, 5, 7]),
+    slot: 'evening', // 18:00–19:00 МСК
+    firstCycle: '2026-10', // первый цикл начинается 23.10.2026; прошлые месяцы не напоминаем
+    // с 23 числа каждый день, пока человек не нажмёт «Готово»; цикл заканчивается 22-го следующего месяца
+    dates: from23,
     buttons: okBtn('meters', 'Готово'),
     doneLabel: 'Готово',
   },
   halva: {
     who: ['denis', 'zhanna'],
     text: 'Привет! Надо потратить Халву.',
-    dates: (cm) => days(cm, [5, 10, 15, 20, 25]),
+    slot: 'day', // 14:00–15:00 МСК
+    dates: (cm) => days(cm, [7, 12, 17, 22, 27]),
     buttons: (cm) => [[
       { text: 'Напомнить позже', callback_data: `later|halva|${cm}` },
       { text: 'Всё потрачено', callback_data: `ok|halva|${cm}` },
@@ -60,9 +71,16 @@ export const REMINDERS = {
   mortgage: {
     who: ['denis'],
     text: 'Привет! Надо закинуть ипотеку.',
+    slot: 'day', // 14:00–15:00 МСК
     dates: (cm) => days(cm, [22]),
     buttons: okBtn('mortgage', 'Готово'),
     doneLabel: 'Готово',
+  },
+  daily: {
+    who: ['zhanna'],
+    text: 'Бить Денису жопу',
+    slot: 'day', // 14:00–15:00 МСК
+    dates: wholeMonth, // каждый день, без кнопок и без «выполнено»
   },
 };
 
@@ -139,11 +157,13 @@ export function publicSettings(state) {
 export const linkedOf = (state) => ({ denis: !!(state.users.denis && state.users.denis.chat), zhanna: !!(state.users.zhanna && state.users.zhanna.chat) });
 
 // Что отправить сегодня. Меняет state: помечает отправки заранее, чтобы повторный запуск cron не дублировал.
-export function planDue(state, now) {
+export function planDue(state, now, slot) {
   const out = [];
   for (const [id, R] of Object.entries(REMINDERS)) {
+    if (slot && (R.slot || 'day') !== slot) continue;
     // текущий и прошлый месяц: последнее напоминание «кешбэка» в коротком феврале выпадает на 1 марта
     for (const cm of [now.month, shiftMonth(now.month, -1)]) {
+      if (R.firstCycle && cm < R.firstCycle) continue;
       if (!R.dates(cm).includes(now.date)) continue;
       const key = id + ':' + cm;
       const c = state.cycles[key] || { done: {}, sent: {} };
@@ -199,7 +219,9 @@ export async function tg(method, payload) {
 
 export function sendReminder(chat, id, cycle) {
   const R = REMINDERS[id];
-  return tg('sendMessage', { chat_id: chat, text: R.text, reply_markup: { inline_keyboard: R.buttons(cycle) } });
+  const body = { chat_id: chat, text: R.text };
+  if (R.buttons) body.reply_markup = { inline_keyboard: R.buttons(cycle) };
+  return tg('sendMessage', body);
 }
 
 export function safeEq(a, b) {
