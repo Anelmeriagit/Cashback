@@ -42,8 +42,26 @@ export function checkLogin(user, pass) {
 }
 
 // Серверная проверка: в хранилище попадают только допустимые значения.
+export function cleanCustom(list) {
+  const out = [];
+  const seen = new Set(CATS.map((c) => c.toLowerCase()));
+  for (const v of Array.isArray(list) ? list : []) {
+    if (typeof v !== 'string') continue;
+    const t = v.replace(/\s+/g, ' ').trim();
+    if (!t || t.length > 40 || /[<>"'`&\\\u0000-\u001f]/.test(t)) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+    if (out.length >= 30) break;
+  }
+  return out;
+}
+
 export function clean(d) {
   const out = {};
+  out.custom = cleanCustom(d && d.custom);
+  const allowed = new Set([...CATS, ...out.custom]);
   for (const p of PEOPLE) {
     const seen = new Set();
     const list = Array.isArray(d && d[p]) ? d[p] : [];
@@ -52,7 +70,7 @@ export function clean(d) {
       .map((b) => ({
         bank: b.bank,
         items: (Array.isArray(b.items) ? b.items : [])
-          .filter((i) => i && CATS.includes(i.cat) && PCTS.includes(i.pct))
+          .filter((i) => i && allowed.has(i.cat) && PCTS.includes(i.pct))
           .slice(0, 60)
           .map((i) => ({ cat: i.cat, pct: i.pct })),
       }));
