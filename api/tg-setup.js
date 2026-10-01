@@ -1,6 +1,6 @@
 import { tg, webhookSecret, authed, BOT_COMMANDS } from './_bot.js';
 
-// Однократная регистрация вебхука: открыть /api/tg-setup?key=<CRON_SECRET> на боевом домене.
+// Однократная регистрация вебхука: curl -H "Authorization: Bearer <CRON_SECRET>" https://<домен>/api/tg-setup
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!authed(req)) return res.status(401).json({ error: 'auth' });

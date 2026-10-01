@@ -3,7 +3,7 @@ import { REMINDERS, PERSONS, TEST_CYCLE, mskNow, mutate, readState, planDue, lin
 function failText(failed, now, slot) {
   const lines = failed.map((f) => '• ' + REMINDERS[f.id].title + ' — ' + (PERSONS[f.p] ? PERSONS[f.p].name : f.p) + ': ' + f.error);
   return '⚠️ Не удалось отправить напоминания (' + now.date + ', ' + (slot === 'evening' ? 'вечер' : 'день') + '):\n' + lines.join('\n') +
-    '\n\nПовторить: открыть /api/cron' + (slot === 'evening' ? '?slot=evening' : '') + ' с ключом. Уже доставленные дубли не получат.';
+    '\n\nПовторить: curl -H "Authorization: Bearer <CRON_SECRET>" https://<домен>/api/cron' + (slot === 'evening' ? '?slot=evening' : '') + ' — уже доставленным дубль не уйдёт.';
 }
 
 export default async function handler(req, res) {
@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   if (!authed(req)) return res.status(401).json({ error: 'auth' });
   const q = req.query || {};
   try {
-    // Ручной тест внешнего вида и кнопок: /api/cron?key=...&send=halva
+    // Ручной тест внешнего вида и кнопок: /api/cron?send=halva (ключ в заголовке Authorization: Bearer <CRON_SECRET>)
     // Расписание и отметки реальных циклов не затрагивает (отдельный тестовый цикл).
     if (q.send) {
       const R = REMINDERS[q.send];
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ test: true, sent });
     }
 
-    // Сухой прогон: /api/cron?key=...&dry=1[&date=2026-10-25] — ничего не отправляет и не записывает.
+    // Сухой прогон: /api/cron?dry=1[&date=2026-10-25] (тот же заголовок) — ничего не отправляет и не записывает.
     if (q.dry === '1') {
       let now = mskNow();
       if (q.date) {

@@ -1,14 +1,14 @@
 import { loadDoc } from './_lib.js';
-import { PERSONS, REMINDERS, personOf, tg, mutate, readState, markDone, isFilled, targetMonth, webhookSecret, safeEq, mskNow, cashbackTexts, chunkText } from './_bot.js';
+import { PERSONS, REMINDERS, whoIs, tg, mutate, readState, markDone, isFilled, targetMonth, webhookSecret, safeEq, mskNow, cashbackTexts, chunkText } from './_bot.js';
 
 const CM_RE = /^\d{4}-\d{2}$/;
 
 async function onMessage(m) {
-  const p = personOf(m.from);
+  const p = await whoIs(m.from);
   // Чужие и групповые чаты: полная тишина.
   if (!p || !m.chat || m.chat.type !== 'private') return;
   if (/^\/start(\s|@|$)/i.test(String(m.text || ''))) {
-    await mutate((st) => { st.users[p] = { chat: m.chat.id, username: m.from.username }; });
+    await mutate((st) => { st.users[p] = { chat: m.chat.id, username: m.from.username, id: m.from.id }; });
     await tg('sendMessage', { chat_id: m.chat.id, text: `Привет, ${PERSONS[p].name}! Бот подключён: напоминания будут приходить сюда. Список кешбэков — в меню слева от поля ввода.` });
     return;
   }
@@ -24,7 +24,7 @@ async function onMessage(m) {
 }
 
 async function onCallback(cq) {
-  const p = personOf(cq.from);
+  const p = await whoIs(cq.from);
   if (!p) return;
   const ans = (extra) => tg('answerCallbackQuery', { callback_query_id: cq.id, ...extra }).catch(() => {});
   const [act, id, cm] = String(cq.data || '').split('|');
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
     try {
       const cq = u && u.callback_query, m = u && u.message;
       if (cq) await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Не получилось. Попробуйте ещё раз через минуту.', show_alert: true }, { retries: 0 });
-      else if (m && m.chat && m.chat.type === 'private' && personOf(m.from)) await tg('sendMessage', { chat_id: m.chat.id, text: 'Что-то пошло не так. Попробуйте ещё раз чуть позже.' }, { retries: 0 });
+      else if (m && m.chat && m.chat.type === 'private' && await whoIs(m.from)) await tg('sendMessage', { chat_id: m.chat.id, text: 'Что-то пошло не так. Попробуйте ещё раз чуть позже.' }, { retries: 0 });
     } catch (e2) { console.error('error reply failed', e2.message); }
   }
   // Всегда 200, иначе Telegram будет слать то же обновление повторно.

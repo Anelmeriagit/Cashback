@@ -8,18 +8,25 @@ export const CATS = ['АЗС','Авто и автосервис','Активны
 export const PCTS = ['0.5','1','1.5','2','3','4','5','6','7','8','10','12','15','20','25','30'];
 
 // Ключ подписи сессий берётся из секрета на сервере (AUTH_HASH) — в коде страницы его нет.
-const secret = () => process.env.AUTH_HASH || '';
+// Отдельный ключ подписи сессий. Пока SESSION_SECRET не задан, используется AUTH_HASH (с предупреждением).
+const secret = () => {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  console.warn('SESSION_SECRET не задан: сессии подписаны AUTH_HASH. Задайте SESSION_SECRET.');
+  return process.env.AUTH_HASH || '';
+};
+// Смена SESSION_VERSION в настройках Vercel мгновенно разлогинивает все устройства.
+const ver = () => String(process.env.SESSION_VERSION || '1');
 const sign = (p) => crypto.createHmac('sha256', secret()).update(p).digest('base64url');
 const COOKIE = 'cb_session';
 const FLAGS = '; HttpOnly; Secure; SameSite=Strict; Path=/';
 
 export function makeCookie(user) {
-  const p = Buffer.from(JSON.stringify({ u: user, e: Date.now() + 30 * 864e5 })).toString('base64url');
+  const p = Buffer.from(JSON.stringify({ u: user, e: Date.now() + 30 * 864e5, i: Date.now(), v: ver() })).toString('base64url');
   return `${COOKIE}=${p}.${sign(p)}${FLAGS}; Max-Age=2592000`;
 }
 export const clearCookie = `${COOKIE}=${FLAGS}; Max-Age=0`;
 
-export function session(req) {
+function parseSession(req) {
   if (!secret()) return null;
   const m = (req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`));
   if (!m) return null;
@@ -29,8 +36,14 @@ export function session(req) {
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   try {
     const d = JSON.parse(Buffer.from(p, 'base64url').toString());
-    return d.e > Date.now() && d.u === process.env.AUTH_USER ? d.u : null;
+    return d.e > Date.now() && d.u === process.env.AUTH_USER && String(d.v === undefined ? '1' : d.v) === ver() ? d : null;
   } catch { return null; }
+}
+export function session(req) { const d = parseSession(req); return d ? d.u : null; }
+// Если сессии больше 7 дней, выдаём новую cookie на 30 дней (скользящий срок).
+export function renewCookie(req) {
+  const d = parseSession(req);
+  return d && Date.now() - (d.i || 0) > 7 * 864e5 ? makeCookie(d.u) : null;
 }
 
 export function checkLogin(user, pass) {
@@ -154,4 +167,40 @@ export async function loadDoc(user) {
     if (!r2.legacy) r = r2;
   }
   return r;
+}
+
+/* ---------- ограничение попыток входа (хранится в Blob, переживает перезапуски инстансов) ---------- */
+const WIN = 15 * 60 * 1000, IP_MAX = 5, ALL_MAX = 50;
+const fpath = (s) => 'auth/' + crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 32) + '.json';
+async function readJson(p) {
+  try {
+    const r = await get(p, { access: 'private', useCache: false });
+    if (!r || r.statusCode !== 200) return null;
+    return JSON.parse(await new Response(r.stream).text());
+  } catch (e) { if (isMissing(e)) return null; throw e; }
+}
+const writeJson = (p, v) => put(p, JSON.stringify(v), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' });
+const live = (r) => (r && Date.now() - r.t < WIN ? r : { n: 0, t: Date.now() });
+const mins = (r) => Math.max(1, Math.ceil((WIN - (Date.now() - r.t)) / 60000));
+
+export async function loginState(ip) {
+  try {
+    const [a, g] = await Promise.all([readJson(fpath('ip:' + ip)), readJson(fpath('all'))]);
+    const ipr = live(a), all = live(g);
+    if (ipr.n >= IP_MAX) return { ip, ipr, all, blocked: true, minutes: mins(ipr) };
+    if (all.n >= ALL_MAX) return { ip, ipr, all, blocked: true, minutes: mins(all) };
+    return { ip, ipr, all, blocked: false };
+  } catch (e) {
+    console.error('login limiter unavailable', e.message);
+    return { ip, ipr: { n: 0, t: Date.now() }, all: { n: 0, t: Date.now() }, blocked: false, broken: true };
+  }
+}
+export async function loginFailed(s) {
+  if (s.broken) return;
+  try { s.ipr.n++; s.all.n++; await Promise.all([writeJson(fpath('ip:' + s.ip), s.ipr), writeJson(fpath('all'), s.all)]); }
+  catch (e) { console.error('login limiter write', e.message); }
+}
+export async function loginOk(s) {
+  if (s.broken || !s.ipr.n) return;
+  try { await writeJson(fpath('ip:' + s.ip), { n: 0, t: Date.now() }); } catch (e) { console.error(e.message); }
 }

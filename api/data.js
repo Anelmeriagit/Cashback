@@ -1,4 +1,4 @@
-import { session, loadDoc, writeDoc, clean, isPrecond, PART_RE, curMonth, shiftMonth } from './_lib.js';
+import { session, renewCookie, loadDoc, writeDoc, clean, isPrecond, PART_RE, curMonth, shiftMonth } from './_lib.js';
 
 const pub = (doc) => ({ months: doc.months, custom: doc.custom });
 
@@ -8,6 +8,8 @@ export default async function handler(req, res) {
   if (!user) return res.status(401).json({ error: 'auth' });
   try {
     if (req.method === 'GET') {
+      const rc = renewCookie(req);
+      if (rc) res.setHeader('Set-Cookie', rc);
       const { doc } = await loadDoc(user);
       return res.status(200).json({ user, data: pub(doc), rev: doc.rev });
     }

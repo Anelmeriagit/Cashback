@@ -297,7 +297,7 @@ export function authed(req) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
   const h = String(req.headers.authorization || '');
-  const key = h.startsWith('Bearer ') ? h.slice(7) : String((req.query && req.query.key) || '');
+  const key = h.startsWith('Bearer ') ? h.slice(7) : ''; // только заголовок: секрет не попадает в URL и логи
   return safeEq(key, secret);
 }
 
@@ -324,4 +324,19 @@ export function unclaim(fails) {
       if (i > -1) s.splice(i, 1);
     }
   });
+}
+
+// Определяет человека по числовому Telegram id. Пока id не сохранён (первый раз), доверяем username
+// и сразу запоминаем id; после этого смена или перехват username уже ничего не даёт.
+export async function whoIs(from) {
+  if (!from || !from.id) return null;
+  const { state } = await readState();
+  const keys = Object.keys(PERSONS);
+  const byId = keys.find((k) => state.users[k] && state.users[k].id === from.id);
+  if (byId) return byId;
+  const uname = String(from.username || '').toLowerCase();
+  const k = keys.find((x) => PERSONS[x].username === uname && !(state.users[x] && state.users[x].id));
+  if (!k) return null;
+  if (state.users[k]) await mutate((st) => { if (st.users[k] && !st.users[k].id) st.users[k].id = from.id; });
+  return k;
 }
