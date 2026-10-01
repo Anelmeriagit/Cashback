@@ -1,4 +1,10 @@
-import { REMINDERS, TEST_CYCLE, mskNow, mutate, readState, planDue, linkedOf, sendReminder, authed } from './_bot.js';
+import { REMINDERS, PERSONS, TEST_CYCLE, mskNow, mutate, readState, planDue, linkedOf, sendReminder, authed, notifyAdmin, unclaim } from './_bot.js';
+
+function failText(failed, now, slot) {
+  const lines = failed.map((f) => '• ' + REMINDERS[f.id].title + ' — ' + (PERSONS[f.p] ? PERSONS[f.p].name : f.p) + ': ' + f.error);
+  return '⚠️ Не удалось отправить напоминания (' + now.date + ', ' + (slot === 'evening' ? 'вечер' : 'день') + '):\n' + lines.join('\n') +
+    '\n\nПовторить: открыть /api/cron' + (slot === 'evening' ? '?slot=evening' : '') + ' с ключом. Уже доставленные дубли не получат.';
+}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -40,11 +46,18 @@ export default async function handler(req, res) {
     const claims = await mutate((st) => planDue(st, now, slot));
     const sent = await Promise.all(claims.map(async (c) => {
       try { await sendReminder(c.chat, c.id, c.cycle); return { id: c.id, p: c.p, ok: true }; }
-      catch (e) { console.error('send failed', c.id, c.p, e.message); return { id: c.id, p: c.p, ok: false, error: e.message }; }
+      catch (e) { console.error('send failed', c.id, c.p, e.message); return { id: c.id, p: c.p, cycle: c.cycle, date: c.date, ok: false, error: e.message }; }
     }));
-    return res.status(200).json({ date: now.date, slot, sent });
+    const failed = sent.filter((s) => !s.ok);
+    let notified = null;
+    if (failed.length) {
+      try { await unclaim(failed); } catch (e) { console.error('unclaim failed', e.message); }
+      notified = await notifyAdmin(failText(failed, now, slot));
+    }
+    return res.status(failed.length ? 502 : 200).json({ date: now.date, slot, sent: sent.map(({ id, p, ok, error }) => ({ id, p, ok, error })), notified });
   } catch (e) {
     console.error(e);
+    if (!q.send && q.dry !== '1') await notifyAdmin('⚠️ Cron завершился с ошибкой: ' + e.message);
     return res.status(500).json({ error: 'failed', message: e.message });
   }
 }

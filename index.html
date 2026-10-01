@@ -186,7 +186,7 @@ select option{color:var(--text);background:var(--surface)}
   var MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
   var $=function(id){return document.getElementById(id)};
   var stage=$('stage'),st=$('st'),editBtn=$('editBtn'),outBtn=$('outBtn'),warn=$('warn'),loginRoot=$('loginRoot'),prompt_=$('prompt'),months=$('months'),pNext=$('pNext');
-  var edit=false,data=empty(),timer,rev={},dirty={},flight=false,conflict=null,loggedIn=false,showNext=false,ck=clock(),histOpen=false,histMo=null,hCache='',snap='',dirtyBefore={};
+  var edit=false,data=empty(),timer,rev={},dirty={},flight=false,conflict=null,loggedIn=false,showNext=false,ck=clock(),histOpen=false,histMo=null,hCache='',snap='',dirtyBefore={},kept=false;
 
   /* ---------- даты ---------- */
   function pad(n){return(n<10?'0':'')+n}
@@ -205,7 +205,7 @@ select option{color:var(--text);background:var(--surface)}
   function getPart(k){if(k==='custom')return data.custom;var a=k.split(':');return peek(a[0],a[1])}
   function setPart(k,v){if(k==='custom'){data.custom=v;return}var a=k.split(':'),m=data.months[a[0]]||(data.months[a[0]]={zhanna:[],denis:[]});m[a[1]]=v}
   function norm(d){return{months:d.months||{},custom:d.custom||[]}}
-  function api(m,u,b){return fetch(u,{method:m,credentials:'same-origin',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined})}
+  function api(m,u,b,ka){return fetch(u,{method:m,credentials:'same-origin',keepalive:!!ka,headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined})}
   function allCats(){return CATS.concat(data.custom).sort(function(a,b){return a.localeCompare(b,'ru')})}
   function eachRow(fn){Object.keys(data.months).forEach(function(mo){PEOPLE.forEach(function(x){(data.months[mo][x[0]]||[]).forEach(function(b){b.items.forEach(function(r){fn(r,mo+':'+x[0])})})})})}
   function pruneOf(d){Object.keys(d.months).forEach(function(mo){PEOPLE.forEach(function(x){var p=x[0],m=d.months[mo];
@@ -215,15 +215,16 @@ select option{color:var(--text);background:var(--surface)}
   function partName(k){if(k==='custom')return 'Свои категории';var a=k.split(':');return(a[1]==='zhanna'?'Жанна':'Денис')+', '+label(a[0]).toLowerCase()}
   function save(parts){if(edit){st.textContent='●';return}
     (parts||[]).forEach(function(k){dirty[k]=1});clearTimeout(timer);st.textContent='…';timer=setTimeout(flush,400)}
-  function flush(){
+  function flush(ka){
     if(flight||conflict)return;
     var ks=Object.keys(dirty);if(!ks.length)return;
     var payload={parts:{}};ks.forEach(function(k){payload.parts[k]={base:rev[k]||0,value:getPart(k)}});
     dirty={};flight=true;
     function back(){ks.forEach(function(k){dirty[k]=1})}
-    api('PUT','/api/data',payload).then(function(r){return r.json().catch(function(){return{}}).then(function(j){
+    api('PUT','/api/data',payload,ka).then(function(r){return r.json().catch(function(){return{}}).then(function(j){
       flight=false;
-      if(r.status===401){showLogin();return}
+      if(r.status===401){back();showLogin();return}
+      if(r.status===400){st.textContent='Ошибка';note('Сервер отклонил часть изменений, данные обновлены.');reload();return}
       if(r.status===409&&j.error==='conflict'){conflict={parts:j.parts||ks,data:j.data,rev:j.rev};back();showWarn();st.textContent='!';return}
       if(!r.ok){back();st.textContent='Ошибка';return}
       ks.forEach(function(k){rev[k]=j.rev[k]});
@@ -233,6 +234,8 @@ select option{color:var(--text);background:var(--surface)}
     warn.hidden=false;
     warn.innerHTML='<p>Не сохранено: «'+c.parts.map(function(k){return esc(partName(k))}).join('», «')+'» изменили на другом устройстве.</p>'+
       '<div class="acts"><button class="btn" data-w="load" type="button">Загрузить актуальную версию</button><button class="btn" data-w="mine" type="button">Перезаписать моей</button></div>'}
+  function note(msg){warn.hidden=false;warn.innerHTML='<p>'+esc(msg)+'</p>';setTimeout(function(){if(!conflict){warn.hidden=true;warn.innerHTML=''}},6000)}
+  function reload(){api('GET','/api/data').then(function(r){if(r.status===401){showLogin();return}if(!r.ok)return;return r.json().then(function(j){if(edit||conflict||Object.keys(dirty).length)return;data=norm(j.data);rev=j.rev||{};render()})}).catch(function(){})}
   warn.addEventListener('click',function(e){var w=e.target.dataset.w;if(!w||!conflict)return;
     var c=conflict;conflict=null;
     c.parts.forEach(function(k){rev[k]=c.rev[k]||0;
@@ -251,6 +254,7 @@ select option{color:var(--text);background:var(--surface)}
   function cls(v){return v?'':' class="ph"'}
   function opts(items,sel,ph,used){return '<option value="" disabled hidden'+(sel?'':' selected')+'>'+ph+'</option>'+items.map(function(v){var id=v.id||v,t=v.t||v;
     return '<option value="'+esc(id)+'"'+(id===sel?' selected':'')+(used&&used.indexOf(id)>-1&&id!==sel?' disabled':'')+'>'+esc(t)+'</option>'}).join('')}
+  function bn(id){return BANKS[id]?BANKS[id].n:String(id||'')}
   function badge(id){var b=BANKS[id];if(!b)return '';
     return '<span class="badge" aria-hidden="true"'+(b.f?' style="--f:'+b.f+'"':'')+'><img src="logos/'+id+'.svg" alt="" onerror="this.parentNode.classList.add(\'nologo\');this.remove()"><b>'+b.m+'</b></span>'}
   function hl(mo){var g={},out={};
@@ -271,7 +275,7 @@ select option{color:var(--text);background:var(--surface)}
         if(ro)return h+'<p class="empty">Пусто</p></div>';
         var cp=mo===ck.nxt&&peek(ck.cur,p).some(function(b){return b.items.some(function(i){return i.cat&&i.pct})})?'<button class="copybtn" data-m="copy" data-p="'+p+'" type="button">Скопировать из текущего месяца</button>':'';
         return h+'<div class="emptybox"><button class="addbtn" data-act="add" type="button">+ Добавить</button>'+cp+'</div></div>'}
-      return h+(shown.length?shown.map(function(b){return '<section class="blk"><div class="head">'+badge(b.bank)+'<h3>'+BANKS[b.bank].n+'</h3></div><div class="body">'+
+      return h+(shown.length?shown.map(function(b){return '<section class="blk"><div class="head">'+badge(b.bank)+'<h3>'+esc(bn(b.bank))+'</h3></div><div class="body">'+
         b.items.map(function(i){var c=hm[p+'|'+b.bank+'|'+i.cat]||'';
           return '<div class="row'+c+'"><span>'+esc(i.cat)+'</span><span class="pct">'+fp(i.pct)+'%</span></div>'}).join('')+'</div></section>'}).join(''):'<p class="empty">Пусто</p>')+'</div>';
     }
@@ -379,9 +383,11 @@ select option{color:var(--text);background:var(--surface)}
     save(parts);render()});
 
   /* ---------- вход / загрузка ---------- */
-  function ui(on){editBtn.hidden=!on||page!=='main';outBtn.hidden=!on;if(!on){st.textContent='';edit=false;editBtn.setAttribute('aria-pressed','false')}}
-  function showLogin(){ui(false);stage.hidden=true;remStage.hidden=true;data=empty();loggedIn=false;dirty={};conflict=null;flight=false;rev={};showWarn();
-    loginRoot.innerHTML='<form class="login" id="lf" novalidate><h2>Вход</h2>'+
+  function ui(on){editBtn.hidden=!on||page!=='main';outBtn.hidden=!on;if(!on)st.textContent=''}
+  function hasUnsaved(){return(edit&&changedParts().length>0)||Object.keys(dirty).length>0||!!conflict}
+  function showLogin(){var keep=hasUnsaved();clearTimeout(timer);ui(false);stage.hidden=true;remStage.hidden=true;loggedIn=false;flight=false;
+    if(keep){kept=true}else{kept=false;data=empty();dirty={};conflict=null;rev={};edit=false;editBtn.setAttribute('aria-pressed','false');showWarn()}
+    loginRoot.innerHTML='<form class="login" id="lf" novalidate><h2>Вход</h2>'+(kept?'<p class="err" role="status">Сессия истекла. Войдите снова: несохранённые изменения остались в этой вкладке.</p>':'')+
       '<div class="f"><label for="u">Никнейм</label><input id="u" autocomplete="username" required></div>'+
       '<div class="f"><label for="pw">Пароль</label><input id="pw" type="password" autocomplete="current-password" required></div>'+
       '<p class="err" id="le" role="alert"></p><button class="done" type="submit">Войти</button></form>';
@@ -391,18 +397,21 @@ select option{color:var(--text);background:var(--surface)}
       api('POST','/api/login',{user:u,pass:pw}).then(function(r){return r.json().then(function(j){
         if(r.ok)boot();else le.textContent=j.error||'Ошибка входа'})}).catch(function(){le.textContent='Нет связи с сервером'})});
     $('u').focus()}
-  outBtn.addEventListener('click',function(){api('POST','/api/logout').then(showLogin,showLogin)});
+  outBtn.addEventListener('click',function(){if(hasUnsaved()&&!confirm('Есть несохранённые изменения. Выйти без сохранения?'))return;dirty={};conflict=null;edit=false;api('POST','/api/logout').then(showLogin,showLogin)});
   function boot(){api('GET','/api/data').then(function(r){
     if(r.status===401){showLogin();return}
     if(!r.ok)throw 0;
-    return r.json().then(function(j){data=norm(j.data);rev=j.rev||{};loggedIn=true;ck=clock();loginRoot.innerHTML='';ui(true);applyPage();
+    return r.json().then(function(j){if(kept){kept=false;loggedIn=true;ck=clock();loginRoot.innerHTML='';ui(true);editBtn.setAttribute('aria-pressed',edit);applyPage();render();if(edit)st.textContent='●';else if(Object.keys(dirty).length)flush();return}data=norm(j.data);rev=j.rev||{};loggedIn=true;ck=clock();loginRoot.innerHTML='';ui(true);applyPage();
       stage.classList.add('first');render();setTimeout(function(){stage.classList.remove('first')},600)})
   }).catch(function(){loginRoot.innerHTML='<p class="empty">Не удалось загрузить данные. Обновите страницу.</p>'})}
 
   /* ---------- проверка даты: при открытии и при возврате на вкладку, без таймера ---------- */
   function tick(){var n=clock();if(n.cur===ck.cur&&n.late===ck.late&&n.day===ck.day)return;
     var rolled=n.cur!==ck.cur;ck=n;if(loggedIn){render();if(rolled)refresh()}}
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh();if(loggedIn&&page==='rem')remLoad()}});
+  function leaving(){if(!loggedIn||flight||conflict||!Object.keys(dirty).length)return;clearTimeout(timer);flush(true)}
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh();if(loggedIn&&page==='rem')remLoad()}else leaving()});
+  window.addEventListener('pagehide',leaving);
+  window.addEventListener('beforeunload',function(e){if(edit&&changedParts().length){e.preventDefault();e.returnValue=''}});
 
   /* ---------- страницы и «Напоминания» ---------- */
   var REM=[

@@ -40,6 +40,7 @@ export const TEST_CYCLE = '2000-01'; // тестовый цикл для руч�
 export const REMINDERS = {
   cashback: {
     who: ['denis', 'zhanna'],
+    title: 'Выбор кешбэка',
     text: 'Привет! Не забудь выбрать кешбэк на новый период.',
     slot: 'evening', // 18:00–19:00 МСК
     // 25 и 28 числа + последний раз на следующий день (29-го; если 29-го нет — 1-го числа следующего месяца)
@@ -49,6 +50,7 @@ export const REMINDERS = {
   },
   meters: {
     who: ['denis', 'zhanna'],
+    title: 'Счётчики',
     text: 'Привет! Отправь счётчики.',
     slot: 'evening', // 18:00–19:00 МСК
     firstCycle: '2026-10', // первый цикл начинается 23.10.2026; прошлые месяцы не напоминаем
@@ -59,6 +61,7 @@ export const REMINDERS = {
   },
   halva: {
     who: ['denis', 'zhanna'],
+    title: 'Потратить Халву',
     text: 'Привет! Надо потратить Халву.',
     slot: 'day', // 14:00–15:00 МСК
     dates: (cm) => days(cm, [7, 12, 17, 22, 27]),
@@ -70,6 +73,7 @@ export const REMINDERS = {
   },
   mortgage: {
     who: ['denis'],
+    title: 'Закинуть ипотеку',
     text: 'Привет! Надо закинуть ипотеку.',
     slot: 'day', // 14:00–15:00 МСК
     dates: (cm) => days(cm, [22]),
@@ -78,6 +82,7 @@ export const REMINDERS = {
   },
   daily: {
     who: ['zhanna'],
+    title: 'Ежедневное напоминание',
     text: 'Бить Денису жопу',
     slot: 'day', // 14:00–15:00 МСК
     dates: wholeMonth, // каждый день, без кнопок и без «выполнено»
@@ -175,7 +180,7 @@ export function planDue(state, now, slot) {
         if (sent.includes(p)) continue;
         sent.push(p);
         state.cycles[key] = c;
-        out.push({ id, p, cycle: cm, chat });
+        out.push({ id, p, cycle: cm, chat, date: now.date });
       }
     }
   }
@@ -238,16 +243,38 @@ export function chunkText(text, max = 3800) {
 const token = () => process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || '';
 export const webhookSecret = () => crypto.createHash('sha256').update('wh:' + token()).digest('hex');
 
-export async function tg(method, payload) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Запрос к Telegram: таймаут 10 с, повтор при сетевой ошибке, 429 (с учётом retry_after) и 5xx.
+export async function tg(method, payload, { retries = 2 } = {}) {
   if (!token()) throw new Error('Не задан TELEGRAM_BOT_TOKEN');
-  const r = await fetch(`https://api.telegram.org/bot${token()}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {}),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!j.ok) throw new Error(j.description || 'telegram ' + r.status);
-  return j.result;
+  let last;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${token()}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+        signal: AbortSignal.timeout(10000),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j.ok) return j.result;
+      const err = new Error(j.description || 'telegram ' + r.status);
+      err.api = true;
+      last = err;
+      if ((r.status === 429 || r.status >= 500) && attempt < retries) {
+        await sleep(Math.min(((j.parameters && j.parameters.retry_after) || attempt + 1) * 1000, 5000));
+        continue;
+      }
+      throw err;
+    } catch (e) {
+      if (e.api) throw e;
+      last = e;
+      if (attempt < retries) { await sleep(1000 * (attempt + 1)); continue; }
+      throw e;
+    }
+  }
+  throw last;
 }
 
 export function sendReminder(chat, id, cycle) {
@@ -272,4 +299,29 @@ export function authed(req) {
   const h = String(req.headers.authorization || '');
   const key = h.startsWith('Bearer ') ? h.slice(7) : String((req.query && req.query.key) || '');
   return safeEq(key, secret);
+}
+
+// Сообщение администратору (Денису) в Telegram. Никогда не бросает исключение.
+export async function notifyAdmin(text) {
+  try {
+    const { state } = await readState();
+    const chat = state.users.denis && state.users.denis.chat;
+    if (!chat) return false;
+    await tg('sendMessage', { chat_id: chat, text }, { retries: 1 });
+    return true;
+  } catch (e) {
+    console.error('notify failed', e.message);
+    return false;
+  }
+}
+
+// Снимает отметку «отправлено» у неудавшихся отправок: ручной повтор /api/cron отправит их снова.
+export function unclaim(fails) {
+  return mutate((st) => {
+    for (const f of fails) {
+      const s = st.cycles[f.id + ':' + f.cycle] && st.cycles[f.id + ':' + f.cycle].sent && st.cycles[f.id + ':' + f.cycle].sent[f.date];
+      const i = s ? s.indexOf(f.p) : -1;
+      if (i > -1) s.splice(i, 1);
+    }
+  });
 }

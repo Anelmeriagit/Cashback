@@ -18,14 +18,17 @@ export default async function handler(req, res) {
       const parts = body && typeof body.parts === 'object' && body.parts ? body.parts : {};
       const names = Object.keys(parts);
       const cur = curMonth(), lo = shiftMonth(cur, -1), hi = shiftMonth(cur, 2);
-      const okName = (k) => PART_RE.test(k) && (k === 'custom' || (k.slice(0, 7) >= lo && k.slice(0, 7) <= hi));
-      if (!names.length || names.length > 12 ||
-          names.some((k) => !okName(k) || !parts[k] || !Number.isInteger(parts[k].base) || !Array.isArray(parts[k].value))) {
+      // Новые месяцы создаём только в окне «прошлый … +2»; уже существующие (история) менять можно всегда:
+      // это нужно, чтобы переименование/удаление своей категории сохранялось по всей истории.
+      const inWindow = (k) => k === 'custom' || (k.slice(0, 7) >= lo && k.slice(0, 7) <= hi);
+      if (!names.length || names.length > 130 ||
+          names.some((k) => !PART_RE.test(k) || !parts[k] || !Number.isInteger(parts[k].base) || !Array.isArray(parts[k].value))) {
         return res.status(400).json({ error: 'bad request' });
       }
       let prevSig = null;
       for (let attempt = 0; attempt < 4; attempt++) {
         const { doc, etag } = await loadDoc(user);
+        if (names.some((k) => !inWindow(k) && !doc.months[k.slice(0, 7)])) return res.status(400).json({ error: 'bad request' });
         // Версия части изменилась с момента загрузки на устройстве -> конфликт, ничего не пишем.
         const bad = names.filter((k) => parts[k].base !== (doc.rev[k] || 0));
         if (bad.length) return res.status(409).json({ error: 'conflict', parts: bad, data: pub(doc), rev: doc.rev });

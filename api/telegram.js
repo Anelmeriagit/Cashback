@@ -68,13 +68,20 @@ async function onCallback(cq) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   if (!safeEq(req.headers['x-telegram-bot-api-secret-token'] || '', webhookSecret())) return res.status(401).end();
+  let u = null;
   try {
-    let u = req.body;
+    u = req.body;
     if (typeof u === 'string') u = JSON.parse(u);
     if (u && u.callback_query) await onCallback(u.callback_query);
     else if (u && u.message) await onMessage(u.message);
   } catch (e) {
     console.error(e);
+    // Пользователь не должен остаться без ответа: кнопка не «зависает», команда не молчит.
+    try {
+      const cq = u && u.callback_query, m = u && u.message;
+      if (cq) await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Не получилось. Попробуйте ещё раз через минуту.', show_alert: true }, { retries: 0 });
+      else if (m && m.chat && m.chat.type === 'private' && personOf(m.from)) await tg('sendMessage', { chat_id: m.chat.id, text: 'Что-то пошло не так. Попробуйте ещё раз чуть позже.' }, { retries: 0 });
+    } catch (e2) { console.error('error reply failed', e2.message); }
   }
   // Всегда 200, иначе Telegram будет слать то же обновление повторно.
   return res.status(200).json({ ok: true });
