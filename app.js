@@ -244,7 +244,7 @@
   function dlgPrompt(m,d){return dlgOpen(m,'prompt',d)}
   function ui(on){editBtn.hidden=!on||page!=='main';outBtn.hidden=!on;if(!on)st.textContent=''}
   function hasUnsaved(){return(edit&&changedParts().length>0)||Object.keys(dirty).length>0||!!conflict}
-  function showLogin(){var keep=hasUnsaved();clearTimeout(timer);ui(false);stage.hidden=true;remStage.hidden=true;wifiStage.hidden=true;wifiClear();loggedIn=false;flight=false;
+  function showLogin(){var keep=hasUnsaved();clearTimeout(timer);ui(false);stage.hidden=true;remStage.hidden=true;wifiStage.hidden=true;agentStage.hidden=true;wifiClear();agClear();loggedIn=false;flight=false;
     if(keep){kept=true}else{kept=false;data=empty();dirty={};conflict=null;rev={};edit=false;editBtn.setAttribute('aria-pressed','false');showWarn()}
     loginRoot.innerHTML='<form class="login" id="lf" novalidate><h2>Вход</h2>'+(kept?'<p class="err" role="status">Сессия истекла. Войдите снова: несохранённые изменения остались в этой вкладке.</p>':'')+
       '<div class="f"><label for="u">Никнейм</label><input id="u" autocomplete="username" required></div>'+
@@ -268,9 +268,78 @@
   function tick(){var n=clock();if(n.cur===ck.cur&&n.late===ck.late&&n.day===ck.day)return;
     var rolled=n.cur!==ck.cur;ck=n;if(loggedIn){render();if(rolled)refresh()}}
   function leaving(){if(!loggedIn||flight||conflict||!Object.keys(dirty).length)return;clearTimeout(timer);flush(true)}
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh();if(loggedIn&&page==='rem')remLoad();if(loggedIn&&page==='wifi')wifiLoad()}else leaving()});
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh();if(loggedIn&&page==='rem')remLoad();if(loggedIn&&page==='wifi')wifiLoad();if(loggedIn&&page==='agent'&&!agTimer&&!agSaving&&!agDrag)agLoad()}else leaving()});
   window.addEventListener('pagehide',leaving);
   window.addEventListener('beforeunload',function(e){if(edit&&changedParts().length){e.preventDefault();e.returnValue=''}});
+
+  /* ---------- Агент: пары «приложение — время сброса», порядок меняется перетаскиванием ---------- */
+  var AG_APPS=[{id:'app',t:'App'},{id:'opera',t:'Opera'},{id:'mozilla',t:'Mozilla'},{id:'edge',t:'Edge'}],AG_MAX=12,
+      agentStage=$('agentStage'),agBody=$('agBody'),agMsg=$('agMsg'),navAgent=$('navAgent'),ag=null,agTimer=0,agSaving=false,agAgain=false,agNoteT=0,agDrag=null,agBusy=false;
+  var AG_GRIP='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+  function agId(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)}
+  function agTwo(n){return n<10?'0'+n:''+n}
+  function agNote(t,keep){agMsg.textContent=t;clearTimeout(agNoteT);if(t&&!keep)agNoteT=setTimeout(function(){agMsg.textContent=''},2500)}
+  function agClear(){ag=null;clearTimeout(agTimer);agTimer=0;if(agBody)agBody.innerHTML='';if(agMsg)agMsg.textContent=''}
+  function agNum(v){return v===null||v===undefined?'':String(v)}
+  function agRowHtml(r){var hs=[],ms=[],i;
+    for(i=0;i<24;i++)hs.push({id:String(i),t:agTwo(i)});
+    for(i=0;i<60;i+=10)ms.push({id:String(i),t:agTwo(i)});
+    return '<div class="agr" data-id="'+esc(r.id)+'">'+
+      '<button class="agh" type="button" data-ag="grip" aria-label="Переместить строку (стрелки вверх и вниз)">'+AG_GRIP+'</button>'+
+      '<select class="aga'+(r.app?'':' ph')+'" data-k="app" aria-label="Приложение">'+opts(AG_APPS,r.app,'Приложение')+'</select>'+
+      '<select class="agt'+(r.h===null?' ph':'')+'" data-k="h" aria-label="Часы">'+opts(hs,agNum(r.h),'ч')+'</select><span class="agc" aria-hidden="true">:</span>'+
+      '<select class="agt'+(r.m===null?' ph':'')+'" data-k="m" aria-label="Минуты">'+opts(ms,agNum(r.m),'мин')+'</select>'+
+      '<button class="x" type="button" data-ag="del" aria-label="Удалить строку">'+IC.x+'</button></div>'}
+  function agRender(){if(!ag){agBody.innerHTML='';return}
+    agBody.innerHTML=(ag.rows.length?'<div class="agl">'+ag.rows.map(agRowHtml).join('')+'</div>':'<p class="empty">Строк нет. Добавьте первую.</p>')+
+      '<button class="addbtn" type="button" data-ag="add"'+(ag.rows.length>=AG_MAX?' disabled':'')+'>+ Добавить строку</button>'}
+  function agLoad(){if(agBusy)return;agBusy=true;
+    api('GET','/api/agent').then(function(r){agBusy=false;if(r.status===401){showLogin();return}if(!r.ok)throw 0;
+      return r.json().then(function(j){if(!loggedIn||page!=='agent'||agTimer||agSaving||agDrag)return;ag={rows:j.rows||[]};agRender()})
+    }).catch(function(){agBusy=false;if(loggedIn&&page==='agent'&&!ag)agBody.innerHTML='<p class="empty">Не удалось загрузить данные. Проверьте соединение и откройте страницу снова.</p>'})}
+  function agSchedule(){agNote('…',true);clearTimeout(agTimer);agTimer=setTimeout(function(){agFlush(false)},400)}
+  function agFlush(ka){clearTimeout(agTimer);agTimer=0;if(!ag)return;if(agSaving){agAgain=true;return}agSaving=true;
+    api('PUT','/api/agent',{rows:ag.rows},ka).then(function(r){agSaving=false;if(r.status===401){showLogin();return}if(!r.ok)throw 0;
+      if(agAgain){agAgain=false;agFlush(false)}else agNote('Сохранено ✓')
+    }).catch(function(){agSaving=false;agAgain=false;agNote('Не удалось сохранить. Проверьте соединение и измените строку ещё раз.',true)})}
+  function agLeave(){if(agTimer&&loggedIn)agFlush(true)}
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')agLeave()});
+  window.addEventListener('pagehide',agLeave);
+  function agRow(id){for(var i=0;i<ag.rows.length;i++)if(ag.rows[i].id===id)return ag.rows[i];return null}
+  function agSyncOrder(){if(!ag)return;var els=agBody.querySelectorAll('.agr'),next=[],i,r,changed=false;
+    for(i=0;i<els.length;i++){r=agRow(els[i].getAttribute('data-id'));if(r)next.push(r)}
+    if(next.length!==ag.rows.length)return;
+    for(i=0;i<next.length;i++)if(next[i]!==ag.rows[i])changed=true;
+    if(changed){ag.rows=next;agSchedule()}}
+  agBody.addEventListener('change',function(e){var s=e.target.closest('select[data-k]');if(!s||!ag)return;
+    var row=s.closest('.agr'),r=row&&agRow(row.getAttribute('data-id')),k=s.getAttribute('data-k');if(!r)return;
+    r[k]=k==='app'?s.value:parseInt(s.value,10);s.classList.remove('ph');agSchedule()});
+  agBody.addEventListener('click',function(e){var b=e.target.closest('button[data-ag]');if(!b||!ag)return;var a=b.getAttribute('data-ag');
+    if(a==='add'){if(ag.rows.length>=AG_MAX)return;
+      var used=ag.rows.map(function(r){return r.app}),free=AG_APPS.filter(function(x){return used.indexOf(x.id)<0})[0];
+      ag.rows.push({id:agId(),app:(free||AG_APPS[0]).id,h:null,m:null});agRender();agSchedule()}
+    else if(a==='del'){var row=b.closest('.agr'),id=row&&row.getAttribute('data-id');
+      ag.rows=ag.rows.filter(function(r){return r.id!==id});agRender();agSchedule()}});
+  /* перетаскивание: pointer events (мышь и палец), строка следует за указателем, остальные расступаются */
+  function agDragMove(y){var row=agDrag.row,h,c,p,n,b;
+    row.style.transform='none';h=row.getBoundingClientRect().height;c=y-agDrag.grab+h/2;
+    for(;;){p=row.previousElementSibling;if(!p)break;b=p.getBoundingClientRect();if(c<b.top+b.height/2)row.parentNode.insertBefore(row,p);else break}
+    for(;;){n=row.nextElementSibling;if(!n)break;b=n.getBoundingClientRect();if(c>b.top+b.height/2)row.parentNode.insertBefore(row,n.nextSibling);else break}
+    row.style.transform='translateY('+(y-agDrag.grab-row.getBoundingClientRect().top)+'px)'}
+  function agDragEnd(e){if(!agDrag||e.pointerId!==agDrag.id)return;var d=agDrag;agDrag=null;
+    d.row.classList.remove('drag');d.row.style.transform='';try{d.grip.releasePointerCapture(d.id)}catch(x){}agSyncOrder()}
+  agBody.addEventListener('pointerdown',function(e){var g=e.target.closest('button[data-ag="grip"]');if(!g||!ag||agDrag||(e.pointerType==='mouse'&&e.button!==0))return;
+    var row=g.closest('.agr');e.preventDefault();
+    agDrag={row:row,grip:g,id:e.pointerId,grab:e.clientY-row.getBoundingClientRect().top};
+    row.classList.add('drag');try{g.setPointerCapture(e.pointerId)}catch(x){}agDragMove(e.clientY)});
+  agBody.addEventListener('pointermove',function(e){if(agDrag&&e.pointerId===agDrag.id)agDragMove(e.clientY)});
+  agBody.addEventListener('pointerup',agDragEnd);
+  agBody.addEventListener('pointercancel',agDragEnd);
+  /* то же с клавиатуры: стрелки вверх и вниз на значке */
+  agBody.addEventListener('keydown',function(e){var g=e.target.closest('button[data-ag="grip"]');if(!g||!ag||(e.key!=='ArrowUp'&&e.key!=='ArrowDown'))return;
+    e.preventDefault();var row=g.closest('.agr'),sib=e.key==='ArrowUp'?row.previousElementSibling:row.nextElementSibling;if(!sib)return;
+    if(e.key==='ArrowUp')row.parentNode.insertBefore(row,sib);else row.parentNode.insertBefore(sib,row);
+    g.focus();agSyncOrder();var els=agBody.querySelectorAll('.agr'),i=Array.prototype.indexOf.call(els,row)+1;agNote('Позиция '+i+' из '+els.length)});
 
   /* ---------- страницы и «Напоминания» ---------- */
   var REM=[
@@ -283,22 +352,25 @@
   var NM={denis:'Денис',zhanna:'Жанна'};
   var remStage=$('remStage'),remBody=$('remBody'),remMsg=$('remMsg'),remWarn=$('remWarn'),navMain=$('navMain'),navRem=$('navRem'),rem=null,
       wifiStage=$('wifiStage'),wifiBody=$('wifiBody'),wifiMsg=$('wifiMsg'),navWifi=$('navWifi'),wf=null,wfShow=false,wfPrintPass=true,wfBusy=false,wfTimer=0;
-  function pageFromHash(){var h=location.hash;return h==='#reminders'?'rem':h==='#wifi'?'wifi':'main'}
+  function pageFromHash(){var h=location.hash;return h==='#reminders'?'rem':h==='#wifi'?'wifi':h==='#agent'?'agent':'main'}
   var page=pageFromHash();
   function applyPage(){var prev=page;page=pageFromHash();
     stage.hidden=!loggedIn||page!=='main';
     remStage.hidden=!loggedIn||page!=='rem';
     wifiStage.hidden=!loggedIn||page!=='wifi';
+    agentStage.hidden=!loggedIn||page!=='agent';
     document.body.classList.toggle('pw',page==='wifi');
     editBtn.hidden=!loggedIn||page!=='main';
-    navMain.classList.toggle('on',page==='main');navRem.classList.toggle('on',page==='rem');navWifi.classList.toggle('on',page==='wifi');
+    navMain.classList.toggle('on',page==='main');navRem.classList.toggle('on',page==='rem');navWifi.classList.toggle('on',page==='wifi');navAgent.classList.toggle('on',page==='agent');
     if(page==='main')navMain.setAttribute('aria-current','page');else navMain.removeAttribute('aria-current');
     if(page==='rem')navRem.setAttribute('aria-current','page');else navRem.removeAttribute('aria-current');
     if(page==='wifi')navWifi.setAttribute('aria-current','page');else navWifi.removeAttribute('aria-current');
+    if(page==='agent')navAgent.setAttribute('aria-current','page');else navAgent.removeAttribute('aria-current');
     if(prev!==page)window.scrollTo(0,0);
     if(page!=='wifi')wifiClear();
     if(loggedIn&&page==='rem')remLoad();
-    if(loggedIn&&page==='wifi')wifiLoad()}
+    if(loggedIn&&page==='wifi')wifiLoad();
+    if(loggedIn&&page==='agent'&&!agDrag)agLoad()}
   window.addEventListener('hashchange',applyPage);
 
   /* ---------- WiFi ---------- */

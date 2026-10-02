@@ -287,21 +287,58 @@ export async function isFilled(person, month) {
 const BANK_NAMES = { otp: 'ОТП', alfa: 'Альфа', vtb: 'ВТБ', halva: 'Халва', sber: 'Сбер' };
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const monthLabel = (k) => { const [y, m] = k.split('-'); return MONTHS[+m - 1] + ' ' + y; };
-export const blocksOf = (doc, month, p) => ((doc.months[month] && doc.months[month][p]) || []).filter((b) => b.items && b.items.length);
+const PEOPLE_ORDER = ['zhanna', 'denis']; // как на сайте: сначала Жанна, потом Денис
+const pctText = (v) => String(v).replace('.', ',') + '%';
 
-function personText(name, list) {
-  if (!list.length) return name + '\nПока не заполнено';
-  return name + '\n' + list.map((b) => '\n' + (BANK_NAMES[b.bank] || b.bank) + '\n' +
-    b.items.map((i) => '• ' + i.cat + ' — ' + String(i.pct).replace('.', ',') + '%').join('\n')).join('\n');
+// Заполненные строки человека за месяц: [{bank, cat, v}]
+export function filledRows(doc, month, p) {
+  const out = [];
+  for (const b of (doc.months[month] && doc.months[month][p]) || []) {
+    for (const i of (b && b.items) || []) {
+      const v = parseFloat(i && i.pct);
+      if (i && i.cat && i.pct && Number.isFinite(v)) out.push({ bank: b.bank, cat: i.cat, v });
+    }
+  }
+  return out;
+}
+export const blocksOf = (doc, month, p) => filledRows(doc, month, p);
+
+// Одно сообщение на месяц, как компактный вид на сайте:
+// категории по алфавиту, под каждой строки по убыванию процента; банки с одним процентом в одной строке.
+// ✅ у лучшего процента, если в категории есть из чего выбирать (больше одной пары «человек + банк»).
+export function monthText(doc, mo) {
+  const g = {};
+  for (const p of PEOPLE_ORDER) for (const r of filledRows(doc, mo, p)) (g[r.cat] = g[r.cat] || []).push({ p, bank: r.bank, v: r.v });
+  const cats = Object.keys(g).sort((a, b) => a.localeCompare(b, 'ru'));
+  const head = 'Кешбэки, ' + monthLabel(mo);
+  if (!cats.length) return head + '\n\nПока не заполнено';
+  const blocks = cats.map((c) => {
+    const rows = g[c];
+    const multi = new Set(rows.map((r) => r.p + '|' + r.bank)).size > 1;
+    const best = Math.max(...rows.map((r) => r.v));
+    const groups = new Map();
+    for (const r of rows) {
+      if (!groups.has(r.v)) groups.set(r.v, {});
+      const by = groups.get(r.v);
+      (by[r.p] = by[r.p] || []).push(BANK_NAMES[r.bank] || r.bank);
+    }
+    const lines = [...groups.keys()].sort((a, b) => b - a).map((v) => {
+      const by = groups.get(v);
+      const who = PEOPLE_ORDER.filter((p) => by[p]).map((p) => PERSONS[p].name + ': ' + by[p].join(', ')).join(' · ');
+      return (multi && v === best ? '✅ ' : '') + pctText(v) + ' — ' + who;
+    });
+    return c + '\n' + lines.join('\n');
+  });
+  const missing = PEOPLE_ORDER.filter((p) => !filledRows(doc, mo, p).length).map((p) => PERSONS[p].name);
+  return head + '\n\n' + blocks.join('\n\n') + (missing.length ? '\n\n' + missing.join(', ') + ': пока не заполнено' : '');
 }
 
 // Тексты сообщений: текущий месяц и, если кто-то уже заполнил, следующий.
 export function cashbackTexts(doc, curMonth) {
   const months = [curMonth];
   const nxt = shiftMonth(curMonth, 1);
-  if (Object.keys(PERSONS).some((p) => blocksOf(doc, nxt, p).length)) months.push(nxt);
-  return months.map((mo) => 'Кешбэки, ' + monthLabel(mo) + '\n\n' +
-    ['denis', 'zhanna'].map((p) => personText(PERSONS[p].name, blocksOf(doc, mo, p))).join('\n\n'));
+  if (PEOPLE_ORDER.some((p) => filledRows(doc, nxt, p).length)) months.push(nxt);
+  return months.map((mo) => monthText(doc, mo));
 }
 
 // Telegram принимает не больше 4096 символов в сообщении: режем по строкам.
