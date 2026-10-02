@@ -274,23 +274,32 @@
 
   /* ---------- Агент: пары «приложение — время сброса», порядок меняется перетаскиванием ---------- */
   var AG_APPS=[{id:'app',t:'App'},{id:'opera',t:'Opera'},{id:'mozilla',t:'Mozilla'},{id:'edge',t:'Edge'}],AG_MAX=12,
-      agentStage=$('agentStage'),agBody=$('agBody'),agMsg=$('agMsg'),navAgent=$('navAgent'),ag=null,agTimer=0,agSaving=false,agAgain=false,agNoteT=0,agDrag=null,agBusy=false;
+      agentStage=$('agentStage'),agBody=$('agBody'),agMsg=$('agMsg'),navAgent=$('navAgent'),ag=null,agTimer=0,agSaving=false,agAgain=false,agNoteT=0,agDrag=null,agBusy=false,agCu=[];
   var AG_GRIP='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
   function agId(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)}
   function agTwo(n){return n<10?'0'+n:''+n}
   function agNote(t,keep){agMsg.textContent=t;clearTimeout(agNoteT);if(t&&!keep)agNoteT=setTimeout(function(){agMsg.textContent=''},2500)}
   function agClear(){ag=null;clearTimeout(agTimer);agTimer=0;if(agBody)agBody.innerHTML='';if(agMsg)agMsg.textContent=''}
+  var AG_BAD=/[<>"'`&\\\u0000-\u001f]/;
+  function agCustoms(){var seen={},out=[];ag.rows.forEach(function(r){var k=r.app.toLowerCase();if(AG_APPS.some(function(x){return x.id===r.app})||seen[k])return;seen[k]=1;out.push({id:r.app,t:r.app})});return out}
+  function agNewName(){return dlgPrompt('Название браузера или приложения (до 40 символов)','').then(function(x){var v=nrm(x);if(!v)return '';
+    if(AG_BAD.test(v))return dlgAlert('В названии не должно быть символов < > " \' ` & \\').then(function(){return ''});
+    var l=v.toLowerCase(),i,c=agCustoms();
+    for(i=0;i<AG_APPS.length;i++)if(AG_APPS[i].id===l||AG_APPS[i].t.toLowerCase()===l)return AG_APPS[i].id;
+    for(i=0;i<c.length;i++)if(c[i].id.toLowerCase()===l)return c[i].id;
+    return v})}
   function agNum(v){return v===null||v===undefined?'':String(v)}
   function agRowHtml(r){var hs=[],ms=[],i;
     for(i=0;i<24;i++)hs.push({id:String(i),t:agTwo(i)});
     for(i=0;i<60;i+=10)ms.push({id:String(i),t:agTwo(i)});
     return '<div class="agr" data-id="'+esc(r.id)+'">'+
       '<button class="agh" type="button" data-ag="grip" aria-label="Переместить строку (стрелки вверх и вниз)">'+AG_GRIP+'</button>'+
-      '<select class="aga'+(r.app?'':' ph')+'" data-k="app" aria-label="Приложение">'+opts(AG_APPS,r.app,'Приложение')+'</select>'+
+      '<select class="aga" data-k="app" aria-label="Приложение">'+opts(AG_APPS.concat(agCu),r.app,'Приложение')+'<option value="__new">＋ Свой вариант…</option></select>'+
       '<select class="agt'+(r.h===null?' ph':'')+'" data-k="h" aria-label="Часы">'+opts(hs,agNum(r.h),'ч')+'</select><span class="agc" aria-hidden="true">:</span>'+
       '<select class="agt'+(r.m===null?' ph':'')+'" data-k="m" aria-label="Минуты">'+opts(ms,agNum(r.m),'мин')+'</select>'+
       '<button class="x" type="button" data-ag="del" aria-label="Удалить строку">'+IC.x+'</button></div>'}
   function agRender(){if(!ag){agBody.innerHTML='';return}
+    agCu=agCustoms();
     agBody.innerHTML=(ag.rows.length?'<div class="agl">'+ag.rows.map(agRowHtml).join('')+'</div>':'<p class="empty">Строк нет. Добавьте первую.</p>')+
       '<button class="addbtn" type="button" data-ag="add"'+(ag.rows.length>=AG_MAX?' disabled':'')+'>+ Добавить строку</button>'}
   function agLoad(){if(agBusy)return;agBusy=true;
@@ -313,6 +322,7 @@
     if(changed){ag.rows=next;agSchedule()}}
   agBody.addEventListener('change',function(e){var s=e.target.closest('select[data-k]');if(!s||!ag)return;
     var row=s.closest('.agr'),r=row&&agRow(row.getAttribute('data-id')),k=s.getAttribute('data-k');if(!r)return;
+    if(k==='app'&&s.value==='__new'){agNewName().then(function(n){if(n&&ag){r.app=n;agRender();agSchedule()}else agRender()});return}
     r[k]=k==='app'?s.value:parseInt(s.value,10);s.classList.remove('ph');agSchedule()});
   agBody.addEventListener('click',function(e){var b=e.target.closest('button[data-ag]');if(!b||!ag)return;var a=b.getAttribute('data-ag');
     if(a==='add'){if(ag.rows.length>=AG_MAX)return;

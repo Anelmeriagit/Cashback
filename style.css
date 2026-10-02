@@ -241,8 +241,10 @@ dialog .done{width:auto;margin:0;padding:.65rem 1.2rem}
 .agh:hover,.agr.drag .agh{color:var(--accent)}
 .agr.drag .agh{cursor:grabbing}
 .agh svg{width:20px;height:20px;fill:currentColor;display:block}
-.agr select{width:auto;min-width:0;padding:.7rem .4rem}
+.agr select{width:auto;min-width:0;padding:.7rem .4rem;font-size:.95rem}
 .agr .aga{flex:1 1 0;padding-left:.7rem}
-.agr .agt{flex:none;width:62px}
+.agr .agt{flex:none;width:56px}
+.agr .agt[data-k="m"]{width:70px}
+.agr select.ph{padding-right:.2rem}
 .agc{flex:none;color:var(--muted);font-weight:600}
 .agr .x{width:32px;flex:none}
