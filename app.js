@@ -274,12 +274,12 @@
 
   /* ---------- Агент: пары «приложение — время сброса», порядок меняется перетаскиванием ---------- */
   var AG_APPS=[{id:'app',t:'App'},{id:'opera',t:'Opera'},{id:'mozilla',t:'Mozilla'},{id:'edge',t:'Edge'}],AG_MAX=12,
-      agentStage=$('agentStage'),agBody=$('agBody'),agMsg=$('agMsg'),navAgent=$('navAgent'),ag=null,agTimer=0,agSaving=false,agAgain=false,agNoteT=0,agDrag=null,agBusy=false,agCu=[];
+      agentStage=$('agentStage'),agBody=$('agBody'),agMsg=$('agMsg'),navAgent=$('navAgent'),ag=null,agTimer=0,agSaving=false,agAgain=false,agNoteT=0,agDrag=null,agBusy=false,agCu=[],agN=null,agNAt=0,agNBusy=false,agWake=0,agSw=false,agFM=null,AG_GRACE=30*60000;
   var AG_GRIP='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
   function agId(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)}
   function agTwo(n){return n<10?'0'+n:''+n}
   function agNote(t,keep){agMsg.textContent=t;clearTimeout(agNoteT);if(t&&!keep)agNoteT=setTimeout(function(){agMsg.textContent=''},2500)}
-  function agClear(){ag=null;clearTimeout(agTimer);agTimer=0;if(agBody)agBody.innerHTML='';if(agMsg)agMsg.textContent=''}
+  function agClear(){ag=null;agN=null;agNAt=0;clearTimeout(agWake);agWake=0;clearTimeout(agTimer);agTimer=0;if(agBody)agBody.innerHTML='';if(agMsg)agMsg.textContent=''}
   var AG_BAD=/[<>"'`&\\\u0000-\u001f]/;
   function agCustoms(){var seen={},out=[];ag.rows.forEach(function(r){var k=r.app.toLowerCase();if(AG_APPS.some(function(x){return x.id===r.app})||seen[k])return;seen[k]=1;out.push({id:r.app,t:r.app})});return out}
   function agNewName(){return dlgPrompt('Название браузера или приложения (до 40 символов)','').then(function(x){var v=nrm(x);if(!v)return '';
@@ -297,19 +297,25 @@
       '<select class="aga" data-k="app" aria-label="Приложение">'+opts(AG_APPS.concat(agCu),r.app,'Приложение')+'<option value="__new">＋ Свой вариант…</option></select>'+
       '<select class="agt'+(r.h===null?' ph':'')+'" data-k="h" aria-label="Часы">'+opts(hs,agNum(r.h),'ч')+'</select><span class="agc" aria-hidden="true">:</span>'+
       '<select class="agt'+(r.m===null?' ph':'')+'" data-k="m" aria-label="Минуты">'+opts(ms,agNum(r.m),'мин')+'</select>'+
-      '<button class="x" type="button" data-ag="del" aria-label="Удалить строку">'+IC.x+'</button></div>'}
+      '<button class="x" type="button" data-ag="del" aria-label="Удалить строку">'+IC.x+'</button>'+
+      '<div class="agm" hidden><span class="ags"></span><button class="chip agz" type="button" data-ag="reset" aria-label="Сбросить время" hidden>Сбросить</button></div></div>'}
   function agRender(){if(!ag){agBody.innerHTML='';return}
     agCu=agCustoms();
-    agBody.innerHTML=(ag.rows.length?'<div class="agl">'+ag.rows.map(agRowHtml).join('')+'</div>':'<p class="empty">Строк нет. Добавьте первую.</p>')+
-      '<button class="addbtn" type="button" data-ag="add"'+(ag.rows.length>=AG_MAX?' disabled':'')+'>+ Добавить строку</button>'}
+    agBody.innerHTML=agNotifHtml()+(ag.rows.length?'<div class="agl">'+ag.rows.map(agRowHtml).join('')+'</div>':'<p class="empty">Строк нет. Добавьте первую.</p>')+
+      '<button class="addbtn" type="button" data-ag="add"'+(ag.rows.length>=AG_MAX?' disabled':'')+'>+ Добавить строку</button>';agMarks()}
   function agLoad(){if(agBusy)return;agBusy=true;
     api('GET','/api/agent').then(function(r){agBusy=false;if(r.status===401){showLogin();return}if(!r.ok)throw 0;
-      return r.json().then(function(j){if(!loggedIn||page!=='agent'||agTimer||agSaving||agDrag)return;ag={rows:j.rows||[]};agRender()})
+      return r.json().then(function(j){if(!loggedIn)return;agN=agCopy(j.rows);agNAt=Date.now();
+        if(page!=='agent'||agTimer||agSaving||agDrag){agCheck();return}
+        ag={rows:agCopy(j.rows)};var mig=false;
+        ag.rows.forEach(function(r){if(r.h!==null&&r.m!==null&&!r.at){r.at=agNextAt(r.h,r.m);mig=true}});
+        agRender();if(mig)agSchedule();agCheck()})
     }).catch(function(){agBusy=false;if(loggedIn&&page==='agent'&&!ag)agBody.innerHTML='<p class="empty">Не удалось загрузить данные. Проверьте соединение и откройте страницу снова.</p>'})}
   function agSchedule(){agNote('…',true);clearTimeout(agTimer);agTimer=setTimeout(function(){agFlush(false)},400)}
   function agFlush(ka){clearTimeout(agTimer);agTimer=0;if(!ag)return;if(agSaving){agAgain=true;return}agSaving=true;
     api('PUT','/api/agent',{rows:ag.rows},ka).then(function(r){agSaving=false;if(r.status===401){showLogin();return}if(!r.ok)throw 0;
-      if(agAgain){agAgain=false;agFlush(false)}else agNote('Сохранено ✓')
+      return r.json().catch(function(){return null}).then(function(j){agMerge(j);
+        if(agAgain){agAgain=false;agFlush(false)}else agNote('Сохранено ✓')})
     }).catch(function(){agSaving=false;agAgain=false;agNote('Не удалось сохранить. Проверьте соединение и измените строку ещё раз.',true)})}
   function agLeave(){if(agTimer&&loggedIn)agFlush(true)}
   document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')agLeave()});
@@ -323,13 +329,86 @@
   agBody.addEventListener('change',function(e){var s=e.target.closest('select[data-k]');if(!s||!ag)return;
     var row=s.closest('.agr'),r=row&&agRow(row.getAttribute('data-id')),k=s.getAttribute('data-k');if(!r)return;
     if(k==='app'&&s.value==='__new'){agNewName().then(function(n){if(n&&ag){r.app=n;agRender();agSchedule()}else agRender()});return}
-    r[k]=k==='app'?s.value:parseInt(s.value,10);s.classList.remove('ph');agSchedule()});
+    r[k]=k==='app'?s.value:parseInt(s.value,10);if(k!=='app')r.at=r.h!==null&&r.m!==null?agNextAt(r.h,r.m):null;s.classList.remove('ph');agSchedule();agMarks();agCheck()});
   agBody.addEventListener('click',function(e){var b=e.target.closest('button[data-ag]');if(!b||!ag)return;var a=b.getAttribute('data-ag');
     if(a==='add'){if(ag.rows.length>=AG_MAX)return;
       var used=ag.rows.map(function(r){return r.app}),free=AG_APPS.filter(function(x){return used.indexOf(x.id)<0})[0];
       ag.rows.push({id:agId(),app:(free||AG_APPS[0]).id,h:null,m:null});agRender();agSchedule()}
     else if(a==='del'){var row=b.closest('.agr'),id=row&&row.getAttribute('data-id');
-      ag.rows=ag.rows.filter(function(r){return r.id!==id});agRender();agSchedule()}});
+      ag.rows=ag.rows.filter(function(r){return r.id!==id});agRender();agSchedule()}
+    else if(a==='reset'){var rw=b.closest('.agr'),rid=rw&&rw.getAttribute('data-id'),rr=rid&&agRow(rid),hs;
+      if(!rr)return;rr.h=null;rr.m=null;rr.at=null;agRender();agSchedule();agCheck();agNote('Время сброшено, укажите новое');
+      hs=agBody.querySelector('.agr[data-id="'+rid+'"] select[data-k="h"]');if(hs)hs.focus()}
+    else if(a==='notify')agToggleNotify()});
+  /* «Агент»: ближайший сброс, «Сбросить» и уведомление в момент сброса.
+     У строки есть `at` — момент сброса в мс (считает сервер, см. api/agent.js). Уведомление показывает сам сайт,
+     пока он открыт (вкладка или установленное приложение): на тарифе Hobby сервер по таймеру ничего не отправит. */
+  function agCopy(rows){return(rows||[]).map(function(r){return{id:r.id,app:r.app,h:r.h===undefined?null:r.h,m:r.m===undefined?null:r.m,at:r.at||null}})}
+  function agNextAt(h,m){var n=Date.now(),d=new Date(n+10800000),at=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),h,m)-10800000;return at<=n?at+864e5:at}
+  function agDay(ms){return new Date(ms+10800000).toISOString().slice(0,10)}
+  function agUntil(ms){var t=Math.max(1,Math.ceil(ms/60000)),h=Math.floor(t/60),m=t%60;return h?(m?h+' ч '+m+' мин':h+' ч'):t+' мин'}
+  function agName(app){for(var i=0;i<AG_APPS.length;i++)if(AG_APPS[i].id===app)return AG_APPS[i].t;return app}
+  function agSrc(){return page==='agent'&&ag?ag.rows:(agN||[])}
+  function agMerge(j){if(!j||!j.rows)return;agN=agCopy(j.rows);
+    if(ag&&!agTimer&&!agAgain){j.rows.forEach(function(x){var l=agRow(x.id);if(l)l.at=x.at||null});agMarks()}
+    agCheck()}
+  /* подсветка: ближайший будущий сброс и подписи в строках */
+  function agMarks(){if(!ag||!agBody)return;
+    var now=Date.now(),best=null,els=agBody.querySelectorAll('.agr'),i,r,e,t,has;
+    ag.rows.forEach(function(x){if(x.at&&x.at>now&&(!best||x.at<best.at))best=x});
+    for(i=0;i<els.length;i++){e=els[i];r=agRow(e.getAttribute('data-id'));if(!r)continue;
+      has=r.h!==null||r.m!==null;t='';
+      if(r.h!==null&&r.m===null)t='Укажите минуты';else if(r.h===null&&r.m!==null)t='Укажите часы';
+      else if(r.at){if(r.at>now){t=(agDay(r.at)!==agDay(now)?'завтра · ':'')+'через '+agUntil(r.at-now);if(r===best)t='Ближайший · '+t}else t='Сброс прошёл'}
+      e.classList.toggle('next',r===best);e.classList.toggle('past',!!r.at&&r.at<=now);
+      e.querySelector('.agm').hidden=!has;e.querySelector('.agz').hidden=!has;e.querySelector('.ags').textContent=t}}
+  /* уведомления */
+  function agCan(){return typeof Notification!=='undefined'}
+  function agPref(){try{return localStorage.getItem('agNotify')==='1'}catch(e){return false}}
+  function agActive(){return agCan()&&agPref()&&Notification.permission==='granted'}
+  function agNotifHtml(){var on=agActive(),b='',t;
+    if(!agCan())t='Этот браузер не поддерживает уведомления. На iPhone они работают только в приложении, добавленном на экран «Домой».';
+    else if(Notification.permission==='denied')t='Уведомления запрещены в настройках браузера для этого сайта.';
+    else{b='<button class="chip'+(on?' on':'')+'" type="button" data-ag="notify" aria-pressed="'+on+'">'+(on?'Уведомления включены':'Включить уведомления')+'</button>';
+      t='Придёт в момент сброса, пока сайт открыт (вкладка или установленное приложение).'}
+    return'<div class="agn">'+b+'<p class="rd">'+t+'</p></div>'}
+  function agSwReg(){if(agSw||!navigator.serviceWorker)return;agSw=true;navigator.serviceWorker.register('/sw.js').catch(function(){agSw=false})}
+  function agShow(title,body,tag){var o={body:body,tag:tag,lang:'ru',icon:'/Icons/apple-touch-icon.png'};
+    function plain(){try{var n=new Notification(title,o);n.onclick=function(){window.focus();location.hash='#agent'}}catch(e){}}
+    if(agSw&&navigator.serviceWorker)navigator.serviceWorker.ready.then(function(reg){return reg.showNotification(title,o)}).catch(plain);else plain()}
+  function agToggleNotify(){
+    if(agActive()){try{localStorage.setItem('agNotify','0')}catch(e){}agRender();return}
+    if(!agCan())return;
+    var fin=false;function done(p){if(fin)return;fin=true;
+      if(p==='granted'){try{localStorage.setItem('agNotify','1')}catch(e){}agSwReg();agCheck();agShow('Уведомления включены','Сообщение придёт в момент сброса.','ag-test');agFetchN(true)}
+      agRender()}
+    try{var pr=Notification.requestPermission(done);if(pr&&pr.then)pr.then(done)}catch(e){agRender()}}
+  /* отметки «уже показано» хранятся на устройстве: после перезагрузки страницы то же уведомление не повторится */
+  function agFired(){if(!agFM){try{agFM=JSON.parse(localStorage.getItem('agFired')||'{}')}catch(e){agFM=null}if(!agFM||typeof agFM!=='object')agFM={}}return agFM}
+  function agFiredSave(){try{localStorage.setItem('agFired',JSON.stringify(agFM))}catch(e){}}
+  /* строки для уведомлений вне страницы «Агент»: берём при открытии и при возврате на вкладку, не чаще раза в минуту */
+  function agFetchN(force){if(!loggedIn||agNBusy||!agActive())return;agSwReg();
+    if(!force&&agN&&Date.now()-agNAt<60000){agCheck();return}
+    agNBusy=true;
+    api('GET','/api/agent').then(function(r){agNBusy=false;if(r.status===401){showLogin();return}if(!r.ok)throw 0;
+      return r.json().then(function(j){if(!loggedIn)return;agNAt=Date.now();if(!(ag&&page==='agent'))agN=agCopy(j.rows);agCheck()})
+    }).catch(function(){agNBusy=false})}
+  /* проверка: наступившее время — показать (если не старше получаса) и запомнить; следующий запуск — точно ко времени ближайшего сброса */
+  function agCheck(){var rows=agSrc(),now=Date.now(),f,wake=0,ch=false,seen={},i,r;
+    clearTimeout(agWake);agWake=0;if(!loggedIn||!rows.length)return;
+    f=agFired();
+    for(i=0;i<rows.length;i++){r=rows[i];if(!r.at)continue;seen[r.id]=1;
+      if(r.at>now){if(!wake||r.at<wake)wake=r.at;continue}
+      if(f[r.id]===r.at)continue;
+      f[r.id]=r.at;ch=true;
+      if(now-r.at<=AG_GRACE&&agActive())agShow('Сброс: '+agName(r.app),'Время сброса — '+agTwo(r.h)+':'+agTwo(r.m)+' по Москве.','ag-'+r.id+'-'+r.at)}
+    Object.keys(f).forEach(function(k){if(!seen[k]){delete f[k];ch=true}});
+    if(ch)agFiredSave();
+    if(wake)agWake=setTimeout(agCheck,Math.min(wake-now+300,2147000000));
+    if(page==='agent')agMarks()}
+  setInterval(function(){if(loggedIn)agCheck()},30000);
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&loggedIn){agCheck();agFetchN()}});
+
   /* перетаскивание: pointer events (мышь и палец), строка следует за указателем, остальные расступаются */
   function agDragMove(y){var row=agDrag.row,h,c,p,n,b;
     row.style.transform='none';h=row.getBoundingClientRect().height;c=y-agDrag.grab+h/2;
@@ -380,7 +459,7 @@
     if(page!=='wifi')wifiClear();
     if(loggedIn&&page==='rem')remLoad();
     if(loggedIn&&page==='wifi')wifiLoad();
-    if(loggedIn&&page==='agent'&&!agDrag)agLoad()}
+    if(loggedIn&&page==='agent'&&!agDrag)agLoad();if(loggedIn)agFetchN()}
   window.addEventListener('hashchange',applyPage);
 
   /* ---------- WiFi ---------- */

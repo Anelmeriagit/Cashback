@@ -235,7 +235,7 @@ dialog .done{width:auto;margin:0;padding:.65rem 1.2rem}
 }
 /* --- Агент --- */
 .agl{display:grid;grid-template-columns:minmax(0,1fr);gap:.5rem;margin-bottom:.75rem}
-.agr{display:flex;align-items:center;gap:.25rem;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:.35rem .35rem .35rem .15rem}
+.agr{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:.35rem .35rem .35rem .15rem}
 .agr.drag{position:relative;z-index:3;border-color:var(--accent);box-shadow:0 8px 24px rgba(0,0,0,.28)}
 .agh{flex:none;width:32px;height:44px;border:0;background:none;color:var(--muted);cursor:grab;touch-action:none;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:10px}
 .agh:hover,.agr.drag .agh{color:var(--accent)}
@@ -248,3 +248,12 @@ dialog .done{width:auto;margin:0;padding:.65rem 1.2rem}
 .agr select.ph{padding-right:.2rem}
 .agc{flex:none;color:var(--muted);font-weight:600}
 .agr .x{width:32px;flex:none}
+.agn{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .75rem;margin:0 0 .9rem}
+.agn .rd{flex:1 1 220px}
+.agr.next{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--surface))}
+.agm{flex:0 0 100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:34px;padding:0 .35rem .1rem 2.1rem}
+.agm[hidden],.agz[hidden]{display:none}
+.ags{min-width:0;font-size:.85rem;color:var(--muted)}
+.agr.next .ags{color:var(--accent);font-weight:600}
+.agz{flex:none;padding:.25rem .8rem;font-size:.85rem}
+.agr.past .agz{border-color:var(--accent);color:var(--accent)}
