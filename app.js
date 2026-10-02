@@ -376,6 +376,7 @@
   function shiftM(k,n){var a=k.split('-'),d=new Date(Date.UTC(+a[0],+a[1]-1+n,1));return mk(d.getUTCFullYear(),d.getUTCMonth()+1)}
   function dLabel(s){var a=s.split('-');return+a[2]+' '+MG[+a[1]-1]+' '+a[0]}
   function slotPassed(date,slot){var c=clock();return date<c.day||(date===c.day&&mskHour()>=SLH[slot])}
+  function slotOff(date,slot){return slotPassed(date,slot)&&!(fm&&fm.id&&date===fm.od&&slot===fm.os)}
   function tmpFind(id){return(rem&&rem.custom||[]).filter(function(x){return x.id===id})[0]}
   function tmpPast(it){return it.who.every(function(p){return it.sent&&it.sent[p]})||it.date<clock().day}
 
@@ -394,55 +395,69 @@
   function fmRender(focus){
     if(!fm){tmpForm.hidden=true;tmpForm.innerHTML='';tmpAdd.hidden=false;return}
     tmpAdd.hidden=true;tmpForm.hidden=false;
-    var h='<h4>1. Дата'+(fm.date?': '+dLabel(fm.date):'')+'</h4>'+calHtml(),ready=false;
+    var h=(fm.id?'<h4 class="et">Изменение напоминания</h4>':'')+'<h4>1. Дата'+(fm.date?': '+dLabel(fm.date):'')+'</h4>'+calHtml(),ready=false;
     if(fm.date){
       var free=0;
-      h+='<h4>2. Время</h4><div class="slots" role="group" aria-label="Время отправки">'+['day','evening'].map(function(s){var off=slotPassed(fm.date,s);if(!off)free++;
+      h+='<h4>2. Время</h4><div class="slots" role="group" aria-label="Время отправки">'+['day','evening'].map(function(s){var off=slotOff(fm.date,s);if(!off)free++;
         return '<button class="chip'+(fm.slot===s?' on':'')+'" type="button" data-s="'+s+'"'+(off?' disabled':'')+' aria-pressed="'+(fm.slot===s)+'">'+SL[s][0].toUpperCase()+SL[s].slice(1)+'</button>'}).join('')+'</div>'+
         '<p class="rd">'+(free?'Сообщение приходит в Telegram в течение часа после выбранного времени.':'На сегодня оба времени уже прошли. Выберите другую дату.')+'</p>'}
     if(fm.date&&fm.slot){ready=true;
-      h+='<h4>3. Текст и получатели</h4><label class="sr" for="tText">Текст напоминания</label>'+
+      h+='<h4>3. '+(fm.id?'Текст':'Текст и получатели')+'</h4><label class="sr" for="tText">Текст напоминания</label>'+
         '<textarea class="tta" id="tText" maxlength="300" rows="3" placeholder="Текст напоминания">'+esc(fm.text)+'</textarea>'+
-        '<div class="rw"><span>Кому:</span>'+['denis','zhanna'].map(function(p){return '<label class="chk"><input type="checkbox" data-fw="'+p+'"'+(fm.who[p]?' checked':'')+'>'+NM[p]+'</label>'}).join('')+'</div>'+
+        (fm.id?'':'<div class="rw"><span>Кому:</span>'+['denis','zhanna'].map(function(p){return '<label class="chk"><input type="checkbox" data-fw="'+p+'"'+(fm.who[p]?' checked':'')+'>'+NM[p]+'</label>'}).join('')+'</div>')+
         '<p class="err" id="fmErr" role="alert"></p>'}
-    h+='<div class="acts">'+(ready?'<button class="done" type="button" data-f="save">Добавить</button>':'')+'<button class="btn" type="button" data-f="cancel">Отмена</button></div>';
+    h+='<div class="acts">'+(ready?'<button class="done" type="button" data-f="save">'+(fm.id?'Сохранить':'Добавить')+'</button>':'')+'<button class="btn" type="button" data-f="cancel">Отмена</button></div>';
     tmpForm.innerHTML=h;
     if(focus){var n=tmpForm.querySelector(focus);if(n&&!n.disabled)n.focus()}}
   tmpAdd.addEventListener('click',function(){var c=clock();fm={vm:c.cur,date:'',slot:'',text:'',who:{}};fmRender('[data-d="'+c.day+'"]')});
   tmpForm.addEventListener('click',function(e){var b=e.target.closest('button');if(!b||!fm||b.disabled)return;
-    if(b.dataset.d){fm.date=b.dataset.d;if(fm.slot&&slotPassed(fm.date,fm.slot))fm.slot='';fmRender('[data-d="'+fm.date+'"]')}
+    if(b.dataset.d){fm.date=b.dataset.d;if(fm.slot&&slotOff(fm.date,fm.slot))fm.slot='';fmRender('[data-d="'+fm.date+'"]')}
     else if(b.dataset.nav){fm.vm=shiftM(fm.vm,+b.dataset.nav);fmRender('[data-nav="'+b.dataset.nav+'"]')}
     else if(b.dataset.s){fm.slot=b.dataset.s;fmRender('#tText')}
-    else if(b.dataset.f==='cancel'){fm=null;fmRender();tmpAdd.focus()}
+    else if(b.dataset.f==='cancel'){var eid=fm.id,en;fm=null;fmRender();tmpRender();en=eid&&tmpList.querySelector('[data-edit="'+eid+'"]');(en||tmpAdd).focus()}
     else if(b.dataset.f==='save')fmSave()});
   tmpForm.addEventListener('input',function(e){if(fm&&e.target.id==='tText')fm.text=e.target.value});
   tmpForm.addEventListener('change',function(e){var t=e.target;if(fm&&t.dataset&&t.dataset.fw){fm.who[t.dataset.fw]=t.checked;var er=$('fmErr');if(er)er.textContent=''}});
+  function fmDone(j,id){rem=j;fm=null;fmRender();remSync();remMsg.textContent='Сохранено ✓';var n=id&&tmpList.querySelector('[data-edit="'+id+'"]');(n||tmpAdd).focus()}
   function fmSave(){
-    var err=$('fmErr'),btn=tmpForm.querySelector('[data-f="save"]'),text=fm.text.trim(),who=['denis','zhanna'].filter(function(p){return fm.who[p]});
+    var err=$('fmErr'),btn=tmpForm.querySelector('[data-f="save"]'),text=fm.text.trim(),who=['denis','zhanna'].filter(function(p){return fm.who[p]}),id=fm.id,m='POST',body;
     if(!text){err.textContent='Напишите текст напоминания.';return}
-    if(!who.length){err.textContent='Выберите, кому отправить: Дениса, Жанну или обоих.';return}
+    if(id){m='PUT';body={id:id};
+      if(fm.date!==fm.od)body.date=fm.date;
+      if(fm.slot!==fm.os)body.slot=fm.slot;
+      if(text!==fm.ot)body.text=text;
+      if(Object.keys(body).length<2){fm=null;fmRender();tmpRender();var q=tmpList.querySelector('[data-edit="'+id+'"]');if(q)q.focus();return}
+    }else{
+      if(!who.length){err.textContent='Выберите, кому отправить: Дениса, Жанну или обоих.';return}
+      body={date:fm.date,slot:fm.slot,text:text,who:who}}
     err.textContent='';btn.disabled=true;
-    api('POST','/api/custom',{date:fm.date,slot:fm.slot,text:text,who:who}).then(function(r){
+    api(m,'/api/custom',body).then(function(r){
       if(r.status===401){showLogin();return}
       return r.json().catch(function(){return{}}).then(function(j){
-        if(!r.ok){btn.disabled=false;err.textContent=({late:'Это время уже прошло. Выберите другое.',limit:'Слишком много напоминаний. Удалите ненужные.'})[j.error]||'Не удалось сохранить.';return}
-        rem=j;fm=null;fmRender();remSync();remMsg.textContent='Сохранено ✓';tmpAdd.focus()})
+        if(!r.ok){
+          if(j.error==='gone'||j.error==='past'){fm=null;fmRender();remMsg.textContent=j.error==='gone'?'Это напоминание уже удалено.':'Это напоминание уже отправлено, изменить нельзя.';remLoad();return}
+          btn.disabled=false;err.textContent=({late:'Это время уже прошло. Выберите другое.',limit:'Слишком много напоминаний. Удалите ненужные.','bad date':'Эту дату выбрать нельзя.'})[j.error]||'Не удалось сохранить.';return}
+        fmDone(j,id)})
     }).catch(function(){btn.disabled=false;err.textContent='Не удалось сохранить. Проверьте соединение.'})}
+  function tmpEdit(id){var it=tmpFind(id),c=clock();
+    if(!it||it.who.every(function(p){return it.sent&&it.sent[p]}))return;
+    fm={id:id,vm:it.date<c.day?c.cur:it.date.slice(0,7),date:it.date,slot:it.slot,od:it.date,os:it.slot,ot:it.text,text:it.text,who:{}};
+    tmpRender();fmRender(it.date<c.day?'#tText':'[data-d="'+it.date+'"]');tmpForm.scrollIntoView({block:'nearest'})}
 
   /* список */
   function tmpItemHtml(it){
     var all=it.who.every(function(p){return it.sent&&it.sent[p]}),missed=!all&&it.date<clock().day,past=all||missed,
         status=all?' · Отправлено ✓':missed?' · Не отправлено':(it.on?'':' · Выключено'),armed=delArm===it.id;
-    return '<section class="rc tmp'+(past?' past':'')+(it.on?'':' off')+'" data-t="'+esc(it.id)+'">'+
-      '<div class="rh"><div><p class="tt">'+esc(it.text)+'</p><p class="rd">'+dLabel(it.date)+', '+SL[it.slot]+status+'</p></div>'+
+    return '<section class="rc tmp'+(past?' past':'')+(it.on?'':' off')+(fm&&fm.id===it.id?' editing':'')+'" data-t="'+esc(it.id)+'">'+
+      '<div class="rh"><div><p class="tt">'+esc(it.text)+'</p><p class="rd">'+dLabel(it.date)+', '+SL[it.slot]+status+'</p></div><div class="ra">'+(all||armed?'':'<button class="x ed" type="button" data-edit="'+esc(it.id)+'" aria-label="Изменить напоминание">'+IC.pen+'</button>')+
       (armed?'<button class="del arm" type="button" data-del="'+esc(it.id)+'">Уверены?</button>'
-            :'<button class="x del" type="button" data-del="'+esc(it.id)+'" aria-label="Удалить напоминание">'+IC.x+'</button>')+'</div>'+
+            :'<button class="x del" type="button" data-del="'+esc(it.id)+'" aria-label="Удалить напоминание">'+IC.x+'</button>')+'</div></div>'+
       '<div class="rw"><span>Кому:</span>'+['denis','zhanna'].map(function(p){return '<label class="chk"><input type="checkbox" data-t="'+esc(it.id)+'" data-key="'+p+'"'+(it.who.indexOf(p)>-1?' checked':'')+(past?' disabled':'')+'>'+NM[p]+'</label>'}).join('')+
       '<button class="sw" type="button" role="switch" aria-checked="'+(it.on?'true':'false')+'" aria-label="Включить напоминание" data-t="'+esc(it.id)+'" data-key="on"'+(past?' disabled':'')+'></button></div></section>'}
   function tmpRender(){
     if(!rem)return;
     var sel='',ae=document.activeElement,items=(rem.custom||[]).filter(function(x){return x&&Array.isArray(x.who)});
-    if(ae&&tmpList.contains(ae)&&ae.dataset){if(ae.dataset.del)sel='[data-del="'+ae.dataset.del+'"]';else if(ae.dataset.t&&ae.dataset.key)sel='[data-t="'+ae.dataset.t+'"][data-key="'+ae.dataset.key+'"]'}
+    if(ae&&tmpList.contains(ae)&&ae.dataset){if(ae.dataset.edit)sel='[data-edit="'+ae.dataset.edit+'"]';else if(ae.dataset.del)sel='[data-del="'+ae.dataset.del+'"]';else if(ae.dataset.t&&ae.dataset.key)sel='[data-t="'+ae.dataset.t+'"][data-key="'+ae.dataset.key+'"]'}
     var up=items.filter(function(i){return!tmpPast(i)}),pa=items.filter(tmpPast).reverse();
     tmpList.innerHTML=items.length?up.concat(pa).map(tmpItemHtml).join(''):'<p class="empty">Временных напоминаний пока нет.</p>';
     if(sel){var n=tmpList.querySelector(sel);if(n)n.focus()}}
@@ -456,6 +471,7 @@
   function tmpDelete(id){if(!rem)return;rem.custom=(rem.custom||[]).filter(function(x){return x.id!==id});tmpRender();
     tmpSave(api('DELETE','/api/custom?id='+encodeURIComponent(id)))}
   tmpList.addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.disabled)return;
+    if(b.dataset.edit){tmpEdit(b.dataset.edit);return}
     if(b.dataset.del){var id=b.dataset.del;
       if(delArm!==id){delArm=id;clearTimeout(delTimer);delTimer=setTimeout(function(){delArm='';tmpRender()},4000);tmpRender();return}
       clearTimeout(delTimer);delArm='';tmpDelete(id);return}

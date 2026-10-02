@@ -138,6 +138,10 @@ select option{color:var(--text);background:var(--surface)}
 .rc.past{opacity:.6}
 .rh>div{min-width:0}
 .del{flex:none}
+.ra{display:flex;flex:none;align-items:flex-start}
+.ed:hover{color:var(--accent)}
+.rc.editing{border-color:var(--accent)}
+.fm .et{margin:0 0 .75rem;font-size:1rem;color:var(--text)}
 .del.arm{width:auto;height:44px;padding:0 .8rem;border:1px solid var(--err);border-radius:12px;background:none;color:var(--err);font:inherit;font-size:.85rem;font-weight:600;cursor:pointer}
 .del.arm:hover{background:color-mix(in srgb,var(--err) 12%,transparent)}
 /* форма добавления: календарь, время, текст */

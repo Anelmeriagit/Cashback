@@ -4,7 +4,8 @@ import { PERSONS, CUSTOM_MAX, mskNow, mutate, pubState } from './_bot.js';
 
 // Временные (разовые) напоминания.
 //   POST   /api/custom           {date:'YYYY-MM-DD', slot:'day'|'evening', text, who:['denis','zhanna']}
-//   PUT    /api/custom           {id, key:'on'|'denis'|'zhanna', value:boolean}
+//   PUT    /api/custom           {id, key:'on'|'denis'|'zhanna', value:boolean}   — переключатель / получатели
+//   PUT    /api/custom           {id, text?, date?, slot?}                        — правка текста, даты, времени
 //   DELETE /api/custom?id=<id>
 // Каждый ответ — то же, что GET /api/reminders ({settings, linked, custom}).
 // Отправку делает api/cron.js (слоты 14:00 и 18:00 по Москве).
@@ -69,19 +70,51 @@ export default async function handler(req, res) {
       return res.status(200).json(pubState(r));
     }
 
-    // PUT: включить/выключить или изменить получателей
-    const { id, key, value } = b;
-    if (!idOk(id) || typeof value !== 'boolean' || !(key === 'on' || own(PERSONS, key))) return res.status(400).json({ error: 'bad request' });
-    const r = await mutate((s) => {
-      const it = s.custom.find((x) => x && x.id === id);
-      if (!it) return { err: 'gone' };
-      if (key === 'on') { it.on = value; return s; }
-      const w = new Set(Array.isArray(it.who) ? it.who : []);
-      if (value) w.add(key); else w.delete(key);
-      if (!w.size) return { err: 'empty' };
-      it.who = Object.keys(PERSONS).filter((p) => w.has(p));
-      return s;
-    });
+    const { id } = b;
+    if (!idOk(id)) return res.status(400).json({ error: 'bad request' });
+    let r;
+
+    if (!own(b, 'key')) {
+      // PUT: правка текста, даты и/или времени (без пересоздания).
+      // Полностью отправленное изменить нельзя; неотправленное просроченное можно перенести на новую дату.
+      const hasText = own(b, 'text'), hasDate = own(b, 'date'), hasSlot = own(b, 'slot');
+      if (!hasText && !hasDate && !hasSlot) return res.status(400).json({ error: 'bad request' });
+      const text = hasText ? cleanText(b.text) : '';
+      if (hasText && (!text || text.length > MAX_TEXT)) return res.status(400).json({ error: 'bad request' });
+      if (hasDate && !validDate(b.date)) return res.status(400).json({ error: 'bad request' });
+      if (hasSlot && !own(SLOT_HOUR, b.slot)) return res.status(400).json({ error: 'bad request' });
+      const now = mskNow(), hour = hourMsk();
+      const last = new Date(Date.parse(now.date + 'T00:00:00Z') + MAX_DAYS * 864e5).toISOString().slice(0, 10);
+      r = await mutate((s) => {
+        const it = s.custom.find((x) => x && x.id === id);
+        if (!it) return { err: 'gone' };
+        const who = Array.isArray(it.who) ? it.who : [];
+        if (who.length && who.every((p) => it.sent && it.sent[p])) return { err: 'past' };
+        const date = hasDate ? b.date : it.date, slot = hasSlot ? b.slot : it.slot;
+        if (date !== it.date || slot !== it.slot) {
+          // перенос: те же проверки, что при создании; отметки «отправлено» сбрасываются
+          if (date < now.date || date > last) return { err: 'bad date' };
+          if (date === now.date && hour >= SLOT_HOUR[slot]) return { err: 'late' };
+          it.date = date; it.slot = slot; it.sent = {};
+        }
+        if (hasText) it.text = text;
+        return s;
+      });
+    } else {
+      // PUT: включить/выключить или изменить получателей
+      const { key, value } = b;
+      if (typeof value !== 'boolean' || !(key === 'on' || own(PERSONS, key))) return res.status(400).json({ error: 'bad request' });
+      r = await mutate((s) => {
+        const it = s.custom.find((x) => x && x.id === id);
+        if (!it) return { err: 'gone' };
+        if (key === 'on') { it.on = value; return s; }
+        const w = new Set(Array.isArray(it.who) ? it.who : []);
+        if (value) w.add(key); else w.delete(key);
+        if (!w.size) return { err: 'empty' };
+        it.who = Object.keys(PERSONS).filter((p) => w.has(p));
+        return s;
+      });
+    }
     if (r.err === 'gone') return res.status(404).json({ error: 'gone' });
     if (r.err) return res.status(400).json({ error: r.err });
     return res.status(200).json(pubState(r));
