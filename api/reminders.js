@@ -1,7 +1,7 @@
 import { session } from './_lib.js';
-import { REMINDERS, readState, mutate, publicSettings, linkedOf } from './_bot.js';
+import { REMINDERS, readState, mutate, pubState } from './_bot.js';
 
-const pub = (state) => ({ settings: publicSettings(state), linked: linkedOf(state) });
+const pub = pubState;
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');

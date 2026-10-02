@@ -92,11 +92,13 @@ export const REMINDERS = {
 /* ---------- состояние (Vercel Blob) ---------- */
 // { users: { denis: {chat, username}, ... },
 //   settings: { cashback: { on, denis, zhanna }, ... },
-//   cycles: { 'halva:2026-10': { done: { denis: true }, sent: { '2026-10-05': ['denis'] } } } }
+//   cycles: { 'halva:2026-10': { done: { denis: true }, sent: { '2026-10-05': ['denis'] } } },
+//   custom: [ { id, date: '2026-10-05', slot: 'day'|'evening', text, who: ['denis'], on: true, sent: { denis: true } } ] }
 const PATH = 'bot/state.json';
-const fresh = () => ({ users: {}, settings: {}, cycles: {} });
+export const CUSTOM_MAX = 50; // не больше 50 временных напоминаний
+const fresh = () => ({ users: {}, settings: {}, cycles: {}, custom: [] });
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
-const norm = (raw) => ({ users: obj(raw && raw.users), settings: obj(raw && raw.settings), cycles: obj(raw && raw.cycles) });
+const norm = (raw) => ({ users: obj(raw && raw.users), settings: obj(raw && raw.settings), cycles: obj(raw && raw.cycles), custom: Array.isArray(raw && raw.custom) ? raw.custom : [] });
 const isMissing = (e) => /not\s*found|404/i.test(String(e && (e.message || e.name)));
 
 export async function readState() {
@@ -159,7 +161,21 @@ export function publicSettings(state) {
   return out;
 }
 
+// Временные напоминания для сайта: по порядку даты и времени.
+export function publicCustom(state) {
+  const key = (it) => it.date + (it.slot === 'evening' ? 'b' : 'a');
+  return state.custom
+    .filter((it) => it && typeof it.id === 'string' && Array.isArray(it.who) && typeof it.text === 'string')
+    .map((it) => ({
+      id: it.id, date: it.date, slot: it.slot, text: it.text, who: it.who.slice(), on: it.on !== false,
+      sent: Object.fromEntries(it.who.map((p) => [p, !!(it.sent && it.sent[p])])),
+    }))
+    .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+}
+
 export const linkedOf = (state) => ({ denis: !!(state.users.denis && state.users.denis.chat), zhanna: !!(state.users.zhanna && state.users.zhanna.chat) });
+
+export const pubState = (state) => ({ settings: publicSettings(state), linked: linkedOf(state), custom: publicCustom(state) });
 
 // Что отправить сегодня. Меняет state: помечает отправки заранее, чтобы повторный запуск cron не дублировал.
 export function planDue(state, now, slot) {
@@ -184,6 +200,21 @@ export function planDue(state, now, slot) {
       }
     }
   }
+  // Временные напоминания: только на сегодня и в своём слоте; отметка «отправлено» ставится заранее, как у постоянных.
+  for (const it of state.custom) {
+    if (!it || it.on === false || it.date !== now.date || !Array.isArray(it.who)) continue;
+    if (slot && it.slot !== slot) continue;
+    const sent = it.sent && typeof it.sent === 'object' ? it.sent : (it.sent = {});
+    for (const p of it.who) {
+      const chat = state.users[p] && state.users[p].chat;
+      if (!chat || sent[p]) continue;
+      sent[p] = true;
+      out.push({ id: 'custom', cid: it.id, custom: true, text: it.text, p, chat, date: now.date });
+    }
+  }
+  // Старше 60 дней — убираем, чтобы список не рос.
+  const old = iso(Date.parse(now.date + 'T00:00:00Z') - 60 * 864e5);
+  state.custom = state.custom.filter((it) => it && typeof it.date === 'string' && it.date >= old);
   const lo = shiftMonth(now.month, -4);
   for (const k of Object.keys(state.cycles)) if (String(k.split(':')[1]) < lo) delete state.cycles[k];
   return out;
@@ -284,6 +315,8 @@ export function sendReminder(chat, id, cycle) {
   return tg('sendMessage', body);
 }
 
+export const sendCustom = (chat, text) => tg('sendMessage', { chat_id: chat, text: '🔔 ' + text });
+
 export function safeEq(a, b) {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
   return x.length === y.length && crypto.timingSafeEqual(x, y);
@@ -319,6 +352,11 @@ export async function notifyAdmin(text) {
 export function unclaim(fails) {
   return mutate((st) => {
     for (const f of fails) {
+      if (f.custom) {
+        const it = st.custom.find((x) => x && x.id === f.cid);
+        if (it && it.sent) delete it.sent[f.p];
+        continue;
+      }
       const s = st.cycles[f.id + ':' + f.cycle] && st.cycles[f.id + ':' + f.cycle].sent && st.cycles[f.id + ':' + f.cycle].sent[f.date];
       const i = s ? s.indexOf(f.p) : -1;
       if (i > -1) s.splice(i, 1);

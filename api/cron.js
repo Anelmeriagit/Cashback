@@ -1,7 +1,7 @@
-import { REMINDERS, PERSONS, TEST_CYCLE, mskNow, mutate, readState, planDue, linkedOf, sendReminder, authed, notifyAdmin, unclaim } from './_bot.js';
+import { REMINDERS, PERSONS, TEST_CYCLE, mskNow, mutate, readState, planDue, linkedOf, sendReminder, sendCustom, authed, notifyAdmin, unclaim } from './_bot.js';
 
 function failText(failed, now, slot) {
-  const lines = failed.map((f) => '• ' + REMINDERS[f.id].title + ' — ' + (PERSONS[f.p] ? PERSONS[f.p].name : f.p) + ': ' + f.error);
+  const lines = failed.map((f) => '• ' + (f.custom ? 'Своё напоминание' : REMINDERS[f.id].title) + ' — ' + (PERSONS[f.p] ? PERSONS[f.p].name : f.p) + ': ' + f.error);
   return '⚠️ Не удалось отправить напоминания (' + now.date + ', ' + (slot === 'evening' ? 'вечер' : 'день') + '):\n' + lines.join('\n') +
     '\n\nПовторить: curl -H "Authorization: Bearer <CRON_SECRET>" https://<домен>/api/cron' + (slot === 'evening' ? '?slot=evening' : '') + ' — уже доставленным дубль не уйдёт.';
 }
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
       }
       const { state } = await readState();
       const plan = planDue(JSON.parse(JSON.stringify(state)), now, q.slot);
-      return res.status(200).json({ dry: true, date: now.date, linked: linkedOf(state), would_send: plan.map(({ id, p, cycle }) => ({ id, p, cycle })) });
+      return res.status(200).json({ dry: true, date: now.date, linked: linkedOf(state), would_send: plan.map(({ id, p, cycle, cid }) => ({ id, p, cycle, cid })) });
     }
     if (q.date) return res.status(400).json({ error: 'date работает только с dry=1' });
 
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
     const slot = q.slot === 'evening' ? 'evening' : 'day';
     const claims = await mutate((st) => planDue(st, now, slot));
     const sent = await Promise.all(claims.map(async (c) => {
-      try { await sendReminder(c.chat, c.id, c.cycle); return { id: c.id, p: c.p, ok: true }; }
-      catch (e) { console.error('send failed', c.id, c.p, e.message); return { id: c.id, p: c.p, cycle: c.cycle, date: c.date, ok: false, error: e.message }; }
+      try { await (c.custom ? sendCustom(c.chat, c.text) : sendReminder(c.chat, c.id, c.cycle)); return { id: c.id, p: c.p, ok: true }; }
+      catch (e) { console.error('send failed', c.id, c.p, e.message); return { id: c.id, cid: c.cid, custom: c.custom, p: c.p, cycle: c.cycle, date: c.date, ok: false, error: e.message }; }
     }));
     const failed = sent.filter((s) => !s.ok);
     let notified = null;

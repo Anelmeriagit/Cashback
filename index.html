@@ -41,11 +41,22 @@
   <section class="hist" id="hist" inert><div class="hi"><div id="hBody"></div></div></section>
 </main>
 <main id="remStage" hidden>
-  <div class="rwrap">
+  <div class="rwrap rwide">
     <h2 class="mt">Напоминания</h2>
     <p class="rsub">Уведомления приходят в Telegram по московскому времени.</p>
     <div class="warn" id="remWarn" role="status" hidden></div>
-    <div id="remBody"></div>
+    <div class="rcols">
+      <section class="rcol" aria-labelledby="rhPerm">
+        <h3 class="rch" id="rhPerm">Постоянные напоминания</h3>
+        <div id="remBody"></div>
+      </section>
+      <section class="rcol" aria-labelledby="rhTmp">
+        <h3 class="rch" id="rhTmp">Временные напоминания</h3>
+        <button class="addbtn" id="tmpAdd" type="button">+ Добавить напоминание</button>
+        <div class="fm" id="tmpForm" hidden></div>
+        <div id="tmpList"></div>
+      </section>
+    </div>
     <p class="rmsg" id="remMsg" role="status" aria-live="polite"></p>
   </div>
 </main>
