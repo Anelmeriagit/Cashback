@@ -159,3 +159,32 @@ dialog .done{width:auto;margin:0;padding:.65rem 1.2rem}
 .mb b{display:none;font-size:.7rem;color:var(--f,var(--text))}
 .mb.nologo b{display:block}
 @media(max-width:520px){.cc{flex-direction:column;gap:.1rem}.cn{flex:none;padding-top:.1rem}.cgs{width:100%}}
+
+/* ---------- WiFi ---------- */
+.wprint{display:none}
+.wscreen{display:flex;flex-direction:column;align-items:center;gap:1rem}
+.wqr{width:min(100%,320px);background:#fff;border:1px solid var(--line);border-radius:18px;padding:.5rem}
+.qr{display:block;width:100%;height:auto}
+.wi{width:100%;margin:0;display:grid;gap:.5rem}
+.wi>div{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:.65rem .9rem;border:1px solid var(--line);background:var(--surface);border-radius:12px}
+.wi dt{color:var(--muted)}
+.wi dd{margin:0;font-weight:600;text-align:right;overflow-wrap:anywhere}
+.wact{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem}
+.wact .btn{min-height:44px}
+.wchk{display:flex;align-items:center;gap:.5rem;color:var(--muted);font-size:.95rem;cursor:pointer}
+.wchk input{width:18px;height:18px;accent-color:var(--accent)}
+.wcp{position:fixed;top:0;left:0;opacity:0;pointer-events:none}
+@media(max-width:400px){.nav{gap:.9rem}}
+
+@page{size:A4;margin:15mm}
+@media print{
+  body.pw{background:#fff!important;color:#000!important}
+  body.pw header,body.pw>.wrap,body.pw dialog{display:none!important}
+  body.pw main{padding:0}
+  body.pw #wifiStage .mt,body.pw #wifiStage .rsub,body.pw #wifiStage .rmsg,body.pw .wscreen{display:none!important}
+  body.pw .wprint{display:block;text-align:center;color:#000;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.pw .wpt{font-size:28pt;margin:0 0 10mm;color:#000}
+  body.pw .wprint .qr{width:9cm;height:9cm;margin:0 auto 10mm}
+  body.pw .wpn{font-size:20pt;margin:0 0 4mm;color:#000;overflow-wrap:anywhere}
+  body.pw .wph{font-size:13pt;margin:10mm 0 0;color:#000}
+}

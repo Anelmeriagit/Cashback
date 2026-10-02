@@ -244,7 +244,7 @@
   function dlgPrompt(m,d){return dlgOpen(m,'prompt',d)}
   function ui(on){editBtn.hidden=!on||page!=='main';outBtn.hidden=!on;if(!on)st.textContent=''}
   function hasUnsaved(){return(edit&&changedParts().length>0)||Object.keys(dirty).length>0||!!conflict}
-  function showLogin(){var keep=hasUnsaved();clearTimeout(timer);ui(false);stage.hidden=true;remStage.hidden=true;loggedIn=false;flight=false;
+  function showLogin(){var keep=hasUnsaved();clearTimeout(timer);ui(false);stage.hidden=true;remStage.hidden=true;wifiStage.hidden=true;wifiClear();loggedIn=false;flight=false;
     if(keep){kept=true}else{kept=false;data=empty();dirty={};conflict=null;rev={};edit=false;editBtn.setAttribute('aria-pressed','false');showWarn()}
     loginRoot.innerHTML='<form class="login" id="lf" novalidate><h2>Вход</h2>'+(kept?'<p class="err" role="status">Сессия истекла. Войдите снова: несохранённые изменения остались в этой вкладке.</p>':'')+
       '<div class="f"><label for="u">Никнейм</label><input id="u" autocomplete="username" required></div>'+
@@ -268,7 +268,7 @@
   function tick(){var n=clock();if(n.cur===ck.cur&&n.late===ck.late&&n.day===ck.day)return;
     var rolled=n.cur!==ck.cur;ck=n;if(loggedIn){render();if(rolled)refresh()}}
   function leaving(){if(!loggedIn||flight||conflict||!Object.keys(dirty).length)return;clearTimeout(timer);flush(true)}
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh();if(loggedIn&&page==='rem')remLoad()}else leaving()});
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){tick();refresh();if(loggedIn&&page==='rem')remLoad();if(loggedIn&&page==='wifi')wifiLoad()}else leaving()});
   window.addEventListener('pagehide',leaving);
   window.addEventListener('beforeunload',function(e){if(edit&&changedParts().length){e.preventDefault();e.returnValue=''}});
 
@@ -281,19 +281,67 @@
     {id:'daily',t:'Бить Денису жопу',d:'Каждый день около 14:00, только для Жанны.',w:['zhanna']}
   ];
   var NM={denis:'Денис',zhanna:'Жанна'};
-  var remStage=$('remStage'),remBody=$('remBody'),remMsg=$('remMsg'),remWarn=$('remWarn'),navMain=$('navMain'),navRem=$('navRem'),rem=null;
-  function pageFromHash(){return location.hash==='#reminders'?'rem':'main'}
+  var remStage=$('remStage'),remBody=$('remBody'),remMsg=$('remMsg'),remWarn=$('remWarn'),navMain=$('navMain'),navRem=$('navRem'),rem=null,
+      wifiStage=$('wifiStage'),wifiBody=$('wifiBody'),wifiMsg=$('wifiMsg'),navWifi=$('navWifi'),wf=null,wfShow=false,wfPrintPass=true,wfBusy=false,wfTimer=0;
+  function pageFromHash(){var h=location.hash;return h==='#reminders'?'rem':h==='#wifi'?'wifi':'main'}
   var page=pageFromHash();
   function applyPage(){var prev=page;page=pageFromHash();
     stage.hidden=!loggedIn||page!=='main';
     remStage.hidden=!loggedIn||page!=='rem';
+    wifiStage.hidden=!loggedIn||page!=='wifi';
+    document.body.classList.toggle('pw',page==='wifi');
     editBtn.hidden=!loggedIn||page!=='main';
-    navMain.classList.toggle('on',page==='main');navRem.classList.toggle('on',page==='rem');
+    navMain.classList.toggle('on',page==='main');navRem.classList.toggle('on',page==='rem');navWifi.classList.toggle('on',page==='wifi');
     if(page==='main')navMain.setAttribute('aria-current','page');else navMain.removeAttribute('aria-current');
     if(page==='rem')navRem.setAttribute('aria-current','page');else navRem.removeAttribute('aria-current');
+    if(page==='wifi')navWifi.setAttribute('aria-current','page');else navWifi.removeAttribute('aria-current');
     if(prev!==page)window.scrollTo(0,0);
-    if(loggedIn&&page==='rem')remLoad()}
+    if(page!=='wifi')wifiClear();
+    if(loggedIn&&page==='rem')remLoad();
+    if(loggedIn&&page==='wifi')wifiLoad()}
   window.addEventListener('hashchange',applyPage);
+
+  /* ---------- WiFi ---------- */
+  function wifiClear(){wf=null;wfShow=false;if(wifiBody)wifiBody.innerHTML='';if(wifiMsg)wifiMsg.textContent=''}
+  function wifiNote(t){wifiMsg.textContent=t;clearTimeout(wfTimer);if(t)wfTimer=setTimeout(function(){wifiMsg.textContent=''},3000)}
+  function qrSvg(q){var n=q.size+8,d='';
+    q.rows.forEach(function(row,y){var x=0,s;while(x<row.length){if(row.charAt(x)==='1'){s=x;while(x<row.length&&row.charAt(x)==='1')x++;d+='M'+(s+4)+' '+(y+4)+'h'+(x-s)+'v1h-'+(x-s)+'z'}else x++}});
+    return '<svg class="qr" viewBox="0 0 '+n+' '+n+'" role="img" aria-label="QR-код для подключения к WiFi" shape-rendering="crispEdges"><rect width="'+n+'" height="'+n+'" fill="#fff"/><path fill="#000" d="'+d+'"/></svg>'}
+  function wfOpen(){return wf.security==='nopass'}
+  function wfPwText(){return wfOpen()?'без пароля':(wfShow?esc(wf.password):'••••••••••')}
+  function wfPrintHtml(){
+    return '<h2 class="wpt">Подключение к WiFi</h2>'+qrSvg(wf.qr)+
+      '<p class="wpn">Сеть: <b>'+esc(wf.ssid)+'</b></p>'+
+      (!wfOpen()&&wfPrintPass?'<p class="wpn">Пароль: <b>'+esc(wf.password)+'</b></p>':'')+
+      '<p class="wph">Откройте камеру телефона и наведите на код</p>'}
+  function wifiRender(){
+    if(!wf)return;
+    if(!wf.configured){wifiBody.innerHTML='<div class="warn" role="status"><p>WiFi не настроен: задайте <b>WIFI_SSID</b> и <b>WIFI_PASSWORD</b> в настройках Vercel и сделайте redeploy.</p></div>';return}
+    wifiBody.innerHTML='<div class="wscreen">'+
+      '<div class="wqr">'+qrSvg(wf.qr)+'</div>'+
+      '<dl class="wi"><div><dt>Сеть</dt><dd>'+esc(wf.ssid)+'</dd></div><div><dt>Пароль</dt><dd id="wPw">'+wfPwText()+'</dd></div></dl>'+
+      '<div class="wact">'+(wfOpen()?'':'<button class="btn" type="button" id="wShow" data-wf="show" aria-pressed="'+wfShow+'">'+(wfShow?'Скрыть':'Показать')+'</button><button class="btn" type="button" data-wf="copy">Копировать пароль</button>')+
+      '<button class="btn" type="button" data-wf="print">Печать</button></div>'+
+      (wfOpen()?'':'<label class="wchk"><input type="checkbox" id="wPP"'+(wfPrintPass?' checked':'')+'> Показывать пароль на листе</label>')+
+    '</div><div class="wprint" id="wPrint">'+wfPrintHtml()+'</div>'}
+  function wifiLoad(){
+    if(wfBusy)return;wfBusy=true;
+    api('GET','/api/wifi').then(function(r){
+      if(r.status===401){wfBusy=false;showLogin();return}
+      if(!r.ok)throw 0;
+      return r.json().then(function(j){wfBusy=false;if(!loggedIn||page!=='wifi')return;wf=j;wifiRender()})
+    }).catch(function(){wfBusy=false;if(loggedIn&&page==='wifi'&&!wf)wifiBody.innerHTML='<p class="empty">Не удалось загрузить данные. Проверьте соединение и откройте вкладку снова.</p>'})}
+  function wifiCopy(){var t=wf&&wf.password;if(!t)return;
+    function fb(){var ta=document.createElement('textarea'),done=false;ta.value=t;ta.setAttribute('readonly','');ta.className='wcp';document.body.appendChild(ta);ta.select();
+      try{done=document.execCommand('copy')}catch(e){}
+      document.body.removeChild(ta);wifiNote(done?'Пароль скопирован':'Не удалось скопировать')}
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(function(){wifiNote('Пароль скопирован')},fb);else fb()}
+  wifiBody.addEventListener('click',function(e){var b=e.target.closest('button[data-wf]');if(!b||!wf)return;var a=b.getAttribute('data-wf');
+    if(a==='show'){wfShow=!wfShow;$('wPw').textContent=wfPwText();b.textContent=wfShow?'Скрыть':'Показать';b.setAttribute('aria-pressed',String(wfShow))}
+    else if(a==='copy')wifiCopy();
+    else if(a==='print')window.print()});
+  wifiBody.addEventListener('change',function(e){if(e.target.id==='wPP'&&wf){wfPrintPass=e.target.checked;$('wPrint').innerHTML=wfPrintHtml()}});
+
 
   function remBuild(){remBody.innerHTML=REM.map(function(r){
     return '<section class="rc" data-card="'+r.id+'"><div class="rh"><div><h3>'+r.t+'</h3><p class="rd">'+r.d+'</p></div>'+

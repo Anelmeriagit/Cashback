@@ -12,6 +12,10 @@
 | `BLOB_READ_WRITE_TOKEN` | выдаёт Vercel при подключении Blob |
 | `TELEGRAM_BOT_TOKEN` | токен бота |
 | `CRON_SECRET` | секрет для `/api/cron` и `/api/tg-setup`, передаётся только заголовком |
+| `WIFI_SSID` | название домашней сети (вкладка WiFi) |
+| `WIFI_PASSWORD` | пароль сети (не нужен при `WIFI_SECURITY=nopass`) |
+| `WIFI_SECURITY` | необязательно: `WPA` (по умолчанию, подходит для WPA2/WPA3), `WEP` или `nopass` |
+| `WIFI_HIDDEN` | необязательно: `true`, если сеть скрытая (по умолчанию `false`) |
 
 ## Служебные вызовы
 ```
