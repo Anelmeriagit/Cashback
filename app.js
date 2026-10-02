@@ -113,7 +113,30 @@
         '<div class="acts"><button class="btn" data-act="addr"'+d+' type="button">+ Кешбэк</button>'+
         (last?'<button class="btn" data-act="addb" data-mo="'+mo+'" data-p="'+p+'" type="button"'+(l.length>=Object.keys(BANKS).length?' disabled':'')+'>+ Банк</button>':'')+'</div></div></section>'}).join('')+'</div>';
   }
-  function colsHtml(mo,ro){return '<div class="cols">'+PEOPLE.map(function(x){return colHtml(mo,x[0],x[1],ro)}).join('')+'</div>'}
+  /* ---------- компактный вид: категории по алфавиту, под каждой «Ж/Д + банки + процент» ---------- */
+  function mini(id){var b=BANKS[id];if(!b)return '';
+    return '<span class="mb" title="'+esc(b.n)+'"'+(b.f?' style="--f:'+b.f+'"':'')+'><img src="logos/'+esc(id)+'.svg" alt="'+esc(b.n)+'"><b>'+esc(b.m)+'</b></span>'}
+  function hasAny(mo){return PEOPLE.some(function(x){return peek(mo,x[0]).some(function(b){return b.items.some(function(i){return i.cat&&i.pct})})})}
+  function compactHtml(mo){var g={};
+    PEOPLE.forEach(function(x){peek(mo,x[0]).forEach(function(b){b.items.forEach(function(i){if(!i.cat||!i.pct)return;
+      (g[i.cat]=g[i.cat]||[]).push({p:x[0],bank:b.bank,v:parseFloat(i.pct)})})})});
+    var cats=Object.keys(g).sort(function(a,b){return a.localeCompare(b,'ru')});
+    var rowsOf=cats.map(function(c){var ks={},pm={},M=-1,gr={};
+      g[c].forEach(function(r){ks[r.p+'|'+r.bank]=1;pm[r.p]=Math.max(pm[r.p]===undefined?-1:pm[r.p],r.v);M=Math.max(M,r.v);
+        var q=gr[r.v]||(gr[r.v]={v:r.v,by:{}});(q.by[r.p]=q.by[r.p]||[]).push(r.bank)});
+      var multi=Object.keys(ks).length>1;
+      var rows=Object.keys(gr).map(function(k){return gr[k]}).sort(function(a,b){return b.v-a.v});
+      rows.forEach(function(q){q.cl='';if(multi)q.cl=q.v===M?' best':(PEOPLE.some(function(x){return q.by[x[0]]&&pm[x[0]]===q.v})?' good':' dim')});
+      return {c:c,rows:rows}});
+    /* буква стоит в плашке фиксированной ширины, поэтому иконки не «пляшут» из-за разной ширины Ж и Д;
+       Ж и Д идут с начала строки, пустых мест вместо отсутствующего человека нет */
+    return '<div class="cmp">'+rowsOf.map(function(o){
+      return '<div class="cc"><div class="cn">'+esc(o.c)+'</div><div class="cgs">'+o.rows.map(function(q){
+        return '<div class="cg'+q.cl+'">'+PEOPLE.filter(function(x){return q.by[x[0]]}).map(function(x){
+          return '<span class="cw"><span class="cl" title="'+x[1]+'">'+x[1].charAt(0)+'</span>'+q.by[x[0]].map(mini).join('')+'</span>'}).join('')+
+          '<span class="pct">'+fp(q.v)+'%</span></div>'}).join('')+'</div></div>'}).join('')+'</div>'}
+  function colsHtml(mo,ro){if(compact&&(!edit||ro)&&hasAny(mo))return compactHtml(mo);
+    return '<div class="cols">'+PEOPLE.map(function(x){return colHtml(mo,x[0],x[1],ro)}).join('')+'</div>'}
   function histMonths(){return Object.keys(data.months).filter(function(mo){return mo<ck.cur&&PEOPLE.some(function(x){return peek(mo,x[0]).some(function(b){return b.items.length})})}).sort().reverse()}
   function histHtml(){var ms=histMonths();if(!ms.length)return '<p class="empty">История пока пуста: здесь появятся прошлые месяцы.</p>';
     if(ms.indexOf(histMo)<0)histMo=ms[0];
@@ -131,7 +154,7 @@
   function ensureBlank(){[ck.cur].concat(showNext?[ck.nxt]:[]).forEach(function(mo){PEOPLE.forEach(function(x){var l=list(mo,x[0]);if(!l.length)l.push(blank())})})}
 
   function render(){
-    view();if(edit)ensureBlank();
+    view();if(edit)ensureBlank();syncView();
     var a=document.activeElement,d=a&&a.dataset,key=d&&(d.k||d.act||d.h)?{k:d.k,act:d.act,h:d.h,mo:d.mo,p:d.p,b:d.b,r:d.r}:null,y=window.scrollY;
     $('tCur').textContent=label(ck.cur);$('tNext').textContent=label(ck.nxt);
     $('bCur').innerHTML=colsHtml(ck.cur);$('bNext').innerHTML=colsHtml(ck.nxt);
@@ -294,6 +317,11 @@
   remBody.addEventListener('change',function(e){var t=e.target;if(t.type!=='checkbox')return;remSet(t.dataset.r,t.dataset.key,t.checked)});
   remBuild();
 
+  /* ---------- вид: блоки / компактно ---------- */
+  var compact=ls('view')==='compact',vsw=$('vsw');
+  function syncView(){vsw.hidden=edit;Array.prototype.forEach.call(vsw.querySelectorAll('button'),function(b){b.setAttribute('aria-pressed',String((b.dataset.v==='compact')===compact))})}
+  vsw.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;compact=b.dataset.v==='compact';lset('view',compact?'compact':'blocks');render()});
+
   /* ---------- тема ---------- */
   var root=document.documentElement,tb=$('themeBtn');
   function setTheme(t){root.setAttribute('data-theme',t);tb.innerHTML=t==='dark'?IC.sun:IC.moon;
@@ -301,6 +329,6 @@
   setTheme(ls('theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));
   tb.addEventListener('click',function(){var t=root.getAttribute('data-theme')==='dark'?'light':'dark';setTheme(t);lset('theme',t)});
   /* логотип не загрузился -> буква банка (без инлайнового onerror, чтобы работал строгий CSP) */
-  document.addEventListener('error',function(e){var t=e.target,b=t&&t.tagName==='IMG'&&t.parentNode;if(b&&b.classList.contains('badge')){b.classList.add('nologo');t.remove()}},true);
+  document.addEventListener('error',function(e){var t=e.target,b=t&&t.tagName==='IMG'&&t.parentNode;if(b&&(b.classList.contains('badge')||b.classList.contains('mb'))){b.classList.add('nologo');t.remove()}},true);
   boot();
 })();
