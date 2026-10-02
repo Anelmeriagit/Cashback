@@ -354,7 +354,7 @@
       r.w.forEach(function(p){card.querySelector('input[data-key="'+p+'"]').checked=s[p]!==false})});
     var miss=['denis','zhanna'].filter(function(p){return !rem.linked[p]}).map(function(p){return NM[p]});
     remWarn.hidden=!miss.length;
-    if(miss.length)remWarn.innerHTML='<p>Бот ещё не подключён: '+miss.join(', ')+'. Откройте <a href="https://t.me/patyapatya_bot" target="_blank" rel="noopener">@patyapatya_bot</a> в Telegram и нажмите «Запустить».</p>';tmpRender()}
+    if(miss.length)remWarn.innerHTML='<p>Бот ещё не подключён: '+miss.join(', ')+'. Откройте <a href="https://t.me/patyapatya_bot" target="_blank" rel="noopener">@patyapatya_bot</a> в Telegram и нажмите «Запустить».</p>';listsRender()}
   function remLoad(){api('GET','/api/reminders').then(function(r){if(r.status===401){showLogin();return}if(!r.ok)throw 0;
     return r.json().then(function(j){rem=j;remSync()})}).catch(function(){remMsg.textContent='Не удалось загрузить настройки. Обновите страницу.'})}
   function remSet(id,key,v){if(!rem)return;(rem.settings[id]=rem.settings[id]||{})[key]=v;remSync();remMsg.textContent='…';
@@ -365,11 +365,16 @@
   remBody.addEventListener('change',function(e){var t=e.target;if(t.type!=='checkbox')return;remSet(t.dataset.r,t.dataset.key,t.checked)});
   remBuild();
 
-  /* ---------- временные напоминания ---------- */
-  var tmpList=$('tmpList'),tmpForm=$('tmpForm'),tmpAdd=$('tmpAdd'),fm=null,delArm='',delTimer=0;
+  /* ---------- временные и повторяющиеся напоминания ---------- */
+  var tmpList=$('tmpList'),tmpForm=$('tmpForm'),tmpAdd=$('tmpAdd'),recList=$('recList'),recForm=$('recForm'),recAdd=$('recAdd'),fm=null,delArm='',delTimer=0;
   var MG=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  var WDV=['в воскресенье','в понедельник','во вторник','в среду','в четверг','в пятницу','в субботу'];
   var SL={day:'после 14:00',evening:'после 18:00'},SLH={day:14,evening:18};
+  var EV={week:'каждую неделю','2weeks':'каждые 2 недели',month:'каждый месяц'},EVK=['week','2weeks','month'];
   var CHEV={'-1':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>','1':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>'};
+  // fm.kind: 'tmp' — временное (/api/custom), 'rec' — повторяющееся (/api/recurring); открыта может быть только одна форма
+  function K(kind){return kind==='rec'?{form:recForm,list:recList,add:recAdd,url:'/api/recurring'}:{form:tmpForm,list:tmpList,add:tmpAdd,url:'/api/custom'}}
+  function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
   function mskHour(){return parseInt(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',hour:'2-digit',hourCycle:'h23'}).format(new Date()),10)}
   function ymd(y,m,d){return y+'-'+pad(m)+'-'+pad(d)}
   function addDays(s,n){var a=s.split('-'),d=new Date(Date.UTC(+a[0],+a[1]-1,+a[2]+n));return ymd(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate())}
@@ -378,9 +383,10 @@
   function slotPassed(date,slot){var c=clock();return date<c.day||(date===c.day&&mskHour()>=SLH[slot])}
   function slotOff(date,slot){return slotPassed(date,slot)&&!(fm&&fm.id&&date===fm.od&&slot===fm.os)}
   function tmpFind(id){return(rem&&rem.custom||[]).filter(function(x){return x.id===id})[0]}
+  function recFind(id){return(rem&&rem.recurring||[]).filter(function(x){return x.id===id})[0]}
   function tmpPast(it){return it.who.every(function(p){return it.sent&&it.sent[p]})||it.date<clock().day}
 
-  /* форма: календарь -> время -> текст и «Кому» */
+  /* форма: календарь -> (частота) -> время -> текст и «Кому» */
   function calHtml(){
     var c=clock(),vm=fm.vm,a=vm.split('-'),y=+a[0],m=+a[1],first=(new Date(Date.UTC(y,m-1,1)).getUTCDay()+6)%7,
         n=new Date(Date.UTC(y,m,0)).getUTCDate(),max=addDays(c.day,365),h='';
@@ -392,59 +398,82 @@
       '<b>'+MN[m-1]+' '+y+'</b>'+
       '<button class="icon-btn" type="button" data-nav="1" aria-label="Следующий месяц"'+(vm>=max.slice(0,7)?' disabled':'')+'>'+CHEV['1']+'</button></div>'+
       '<div class="cal">'+h+'</div>'}
+  function evHint(){var a=fm.date.split('-'),d=+a[2],w=WDV[new Date(Date.UTC(+a[0],+a[1]-1,d)).getUTCDay()];
+    return 'Первое напоминание — '+dLabel(fm.date)+', дальше '+EV[fm.every]+(fm.every==='month'?', '+d+'-го числа'+(d>28?' (если такого числа в месяце нет, то в последний день месяца)':''):' '+w)+'.'}
   function fmRender(focus){
-    if(!fm){tmpForm.hidden=true;tmpForm.innerHTML='';tmpAdd.hidden=false;return}
-    tmpAdd.hidden=true;tmpForm.hidden=false;
-    var h=(fm.id?'<h4 class="et">Изменение напоминания</h4>':'')+'<h4>1. Дата'+(fm.date?': '+dLabel(fm.date):'')+'</h4>'+calHtml(),ready=false;
-    if(fm.date){
+    var k=fm?K(fm.kind):null,rec=!!fm&&fm.kind==='rec';
+    [tmpForm,recForm].forEach(function(f){if(!k||f!==k.form){f.hidden=true;f.innerHTML=''}});
+    [tmpAdd,recAdd].forEach(function(a){a.hidden=!!k&&a===k.add});
+    if(!fm)return;
+    k.form.hidden=false;
+    var n=1,h=(fm.id?'<h4 class="et">Изменение напоминания</h4>':'')+'<h4>'+(n++)+'. Дата'+(fm.date?': '+dLabel(fm.date):'')+'</h4>'+calHtml(),ready=false;
+    if(rec&&fm.date){
+      h+='<h4>'+(n++)+'. Как часто повторять</h4><div class="slots" role="group" aria-label="Частота повторения">'+EVK.map(function(e){
+        return '<button class="chip'+(fm.every===e?' on':'')+'" type="button" data-e="'+e+'" aria-pressed="'+(fm.every===e)+'">'+cap(EV[e])+'</button>'}).join('')+'</div>'+
+        (fm.every?'<p class="rd">'+evHint()+'</p>':'')}
+    if(fm.date&&(!rec||fm.every)){
       var free=0;
-      h+='<h4>2. Время</h4><div class="slots" role="group" aria-label="Время отправки">'+['day','evening'].map(function(s){var off=slotOff(fm.date,s);if(!off)free++;
-        return '<button class="chip'+(fm.slot===s?' on':'')+'" type="button" data-s="'+s+'"'+(off?' disabled':'')+' aria-pressed="'+(fm.slot===s)+'">'+SL[s][0].toUpperCase()+SL[s].slice(1)+'</button>'}).join('')+'</div>'+
+      h+='<h4>'+(n++)+'. Время</h4><div class="slots" role="group" aria-label="Время отправки">'+['day','evening'].map(function(s){var off=slotOff(fm.date,s);if(!off)free++;
+        return '<button class="chip'+(fm.slot===s?' on':'')+'" type="button" data-s="'+s+'"'+(off?' disabled':'')+' aria-pressed="'+(fm.slot===s)+'">'+cap(SL[s])+'</button>'}).join('')+'</div>'+
         '<p class="rd">'+(free?'Сообщение приходит в Telegram в течение часа после выбранного времени.':'На сегодня оба времени уже прошли. Выберите другую дату.')+'</p>'}
-    if(fm.date&&fm.slot){ready=true;
-      h+='<h4>3. '+(fm.id?'Текст':'Текст и получатели')+'</h4><label class="sr" for="tText">Текст напоминания</label>'+
+    if(fm.date&&fm.slot&&(!rec||fm.every)){ready=true;
+      h+='<h4>'+(n++)+'. '+(fm.id?'Текст':'Текст и получатели')+'</h4><label class="sr" for="tText">Текст напоминания</label>'+
         '<textarea class="tta" id="tText" maxlength="300" rows="3" placeholder="Текст напоминания">'+esc(fm.text)+'</textarea>'+
         (fm.id?'':'<div class="rw"><span>Кому:</span>'+['denis','zhanna'].map(function(p){return '<label class="chk"><input type="checkbox" data-fw="'+p+'"'+(fm.who[p]?' checked':'')+'>'+NM[p]+'</label>'}).join('')+'</div>')+
         '<p class="err" id="fmErr" role="alert"></p>'}
     h+='<div class="acts">'+(ready?'<button class="done" type="button" data-f="save">'+(fm.id?'Сохранить':'Добавить')+'</button>':'')+'<button class="btn" type="button" data-f="cancel">Отмена</button></div>';
-    tmpForm.innerHTML=h;
-    if(focus){var n=tmpForm.querySelector(focus);if(n&&!n.disabled)n.focus()}}
-  tmpAdd.addEventListener('click',function(){var c=clock();fm={vm:c.cur,date:'',slot:'',text:'',who:{}};fmRender('[data-d="'+c.day+'"]')});
-  tmpForm.addEventListener('click',function(e){var b=e.target.closest('button');if(!b||!fm||b.disabled)return;
+    k.form.innerHTML=h;
+    if(focus){var f=k.form.querySelector(focus);if(f&&!f.disabled)f.focus()}}
+  function openForm(kind){var c=clock();fm={kind:kind,vm:c.cur,date:'',slot:'',every:'',text:'',who:{}};fmRender('[data-d="'+c.day+'"]');listsRender()}
+  tmpAdd.addEventListener('click',function(){openForm('tmp')});
+  recAdd.addEventListener('click',function(){openForm('rec')});
+  function formClick(e){var b=e.target.closest('button');if(!b||!fm||b.disabled)return;
     if(b.dataset.d){fm.date=b.dataset.d;if(fm.slot&&slotOff(fm.date,fm.slot))fm.slot='';fmRender('[data-d="'+fm.date+'"]')}
     else if(b.dataset.nav){fm.vm=shiftM(fm.vm,+b.dataset.nav);fmRender('[data-nav="'+b.dataset.nav+'"]')}
+    else if(b.dataset.e){fm.every=b.dataset.e;fmRender('[data-e="'+fm.every+'"]')}
     else if(b.dataset.s){fm.slot=b.dataset.s;fmRender('#tText')}
-    else if(b.dataset.f==='cancel'){var eid=fm.id,en;fm=null;fmRender();tmpRender();en=eid&&tmpList.querySelector('[data-edit="'+eid+'"]');(en||tmpAdd).focus()}
-    else if(b.dataset.f==='save')fmSave()});
-  tmpForm.addEventListener('input',function(e){if(fm&&e.target.id==='tText')fm.text=e.target.value});
-  tmpForm.addEventListener('change',function(e){var t=e.target;if(fm&&t.dataset&&t.dataset.fw){fm.who[t.dataset.fw]=t.checked;var er=$('fmErr');if(er)er.textContent=''}});
-  function fmDone(j,id){rem=j;fm=null;fmRender();remSync();remMsg.textContent='Сохранено ✓';var n=id&&tmpList.querySelector('[data-edit="'+id+'"]');(n||tmpAdd).focus()}
+    else if(b.dataset.f==='cancel'){var eid=fm.id,k=K(fm.kind),en;fm=null;fmRender();listsRender();en=eid&&k.list.querySelector('[data-edit="'+eid+'"]');(en||k.add).focus()}
+    else if(b.dataset.f==='save')fmSave()}
+  function formInput(e){if(fm&&e.target.id==='tText')fm.text=e.target.value}
+  function formChange(e){var t=e.target;if(fm&&t.dataset&&t.dataset.fw){fm.who[t.dataset.fw]=t.checked;var er=$('fmErr');if(er)er.textContent=''}}
+  [tmpForm,recForm].forEach(function(f){f.addEventListener('click',formClick);f.addEventListener('input',formInput);f.addEventListener('change',formChange)});
+  function fmDone(j,id,kind){var k=K(kind);rem=j;fm=null;fmRender();remSync();remMsg.textContent='Сохранено ✓';var n=id&&k.list.querySelector('[data-edit="'+id+'"]');(n||k.add).focus()}
   function fmSave(){
-    var err=$('fmErr'),btn=tmpForm.querySelector('[data-f="save"]'),text=fm.text.trim(),who=['denis','zhanna'].filter(function(p){return fm.who[p]}),id=fm.id,m='POST',body;
+    var kind=fm.kind,k=K(kind),rec=kind==='rec',err=$('fmErr'),btn=k.form.querySelector('[data-f="save"]'),text=fm.text.trim(),who=['denis','zhanna'].filter(function(p){return fm.who[p]}),id=fm.id,m='POST',body;
     if(!text){err.textContent='Напишите текст напоминания.';return}
     if(id){m='PUT';body={id:id};
-      if(fm.date!==fm.od)body.date=fm.date;
+      var evCh=rec&&fm.every!==fm.oe;
+      // смена частоты без смены даты: отсчёт идёт от показанной ближайшей даты, иначе расписание «поедет»
+      if(fm.date!==fm.od||evCh)body.date=fm.date;
       if(fm.slot!==fm.os)body.slot=fm.slot;
+      if(evCh)body.every=fm.every;
       if(text!==fm.ot)body.text=text;
-      if(Object.keys(body).length<2){fm=null;fmRender();tmpRender();var q=tmpList.querySelector('[data-edit="'+id+'"]');if(q)q.focus();return}
+      if(Object.keys(body).length<2){fm=null;fmRender();listsRender();var q=k.list.querySelector('[data-edit="'+id+'"]');if(q)q.focus();return}
     }else{
       if(!who.length){err.textContent='Выберите, кому отправить: Дениса, Жанну или обоих.';return}
-      body={date:fm.date,slot:fm.slot,text:text,who:who}}
+      body={date:fm.date,slot:fm.slot,text:text,who:who};
+      if(rec)body.every=fm.every}
     err.textContent='';btn.disabled=true;
-    api(m,'/api/custom',body).then(function(r){
+    api(m,k.url,body).then(function(r){
       if(r.status===401){showLogin();return}
       return r.json().catch(function(){return{}}).then(function(j){
         if(!r.ok){
           if(j.error==='gone'||j.error==='past'){fm=null;fmRender();remMsg.textContent=j.error==='gone'?'Это напоминание уже удалено.':'Это напоминание уже отправлено, изменить нельзя.';remLoad();return}
           btn.disabled=false;err.textContent=({late:'Это время уже прошло. Выберите другое.',limit:'Слишком много напоминаний. Удалите ненужные.','bad date':'Эту дату выбрать нельзя.'})[j.error]||'Не удалось сохранить.';return}
-        fmDone(j,id)})
+        fmDone(j,id,kind)})
     }).catch(function(){btn.disabled=false;err.textContent='Не удалось сохранить. Проверьте соединение.'})}
   function tmpEdit(id){var it=tmpFind(id),c=clock();
     if(!it||it.who.every(function(p){return it.sent&&it.sent[p]}))return;
-    fm={id:id,vm:it.date<c.day?c.cur:it.date.slice(0,7),date:it.date,slot:it.slot,od:it.date,os:it.slot,ot:it.text,text:it.text,who:{}};
-    tmpRender();fmRender(it.date<c.day?'#tText':'[data-d="'+it.date+'"]');tmpForm.scrollIntoView({block:'nearest'})}
+    fm={kind:'tmp',id:id,vm:it.date<c.day?c.cur:it.date.slice(0,7),date:it.date,slot:it.slot,od:it.date,os:it.slot,ot:it.text,text:it.text,who:{}};
+    listsRender();fmRender(it.date<c.day?'#tText':'[data-d="'+it.date+'"]');tmpForm.scrollIntoView({block:'nearest'})}
+  // правка повторяющегося: показана ближайшая дата, частота, время и текст
+  function recEdit(id){var it=recFind(id),c=clock();
+    if(!it)return;
+    var d=it.next&&it.next>=c.day?it.next:c.day;
+    fm={kind:'rec',id:id,vm:d.slice(0,7),date:d,slot:it.slot,every:it.every,od:d,os:it.slot,oe:it.every,ot:it.text,text:it.text,who:{}};
+    listsRender();fmRender('[data-d="'+d+'"]');recForm.scrollIntoView({block:'nearest'})}
 
-  /* список */
+  /* списки */
   function tmpItemHtml(it){
     var all=it.who.every(function(p){return it.sent&&it.sent[p]}),missed=!all&&it.date<clock().day,past=all||missed,
         status=all?' · Отправлено ✓':missed?' · Не отправлено':(it.on?'':' · Выключено'),armed=delArm===it.id;
@@ -454,32 +483,48 @@
             :'<button class="x del" type="button" data-del="'+esc(it.id)+'" aria-label="Удалить напоминание">'+IC.x+'</button>')+'</div></div>'+
       '<div class="rw"><span>Кому:</span>'+['denis','zhanna'].map(function(p){return '<label class="chk"><input type="checkbox" data-t="'+esc(it.id)+'" data-key="'+p+'"'+(it.who.indexOf(p)>-1?' checked':'')+(past?' disabled':'')+'>'+NM[p]+'</label>'}).join('')+
       '<button class="sw" type="button" role="switch" aria-checked="'+(it.on?'true':'false')+'" aria-label="Включить напоминание" data-t="'+esc(it.id)+'" data-key="on"'+(past?' disabled':'')+'></button></div></section>'}
-  function tmpRender(){
+  function recItemHtml(it){
+    var armed=delArm===it.id;
+    return '<section class="rc tmp rec'+(it.on?'':' off')+(fm&&fm.id===it.id?' editing':'')+'" data-t="'+esc(it.id)+'">'+
+      '<div class="rh"><div><p class="tt">'+esc(it.text)+'</p><p class="rd">'+cap(EV[it.every]||'')+', '+SL[it.slot]+(it.on?'':' · Выключено')+'</p>'+
+      (it.next?'<p class="rd">Ближайшее: '+dLabel(it.next)+'</p>':'')+'</div><div class="ra">'+(armed?'':'<button class="x ed" type="button" data-edit="'+esc(it.id)+'" aria-label="Изменить напоминание">'+IC.pen+'</button>')+
+      (armed?'<button class="del arm" type="button" data-del="'+esc(it.id)+'">Уверены?</button>'
+            :'<button class="x del" type="button" data-del="'+esc(it.id)+'" aria-label="Удалить напоминание">'+IC.x+'</button>')+'</div></div>'+
+      '<div class="rw"><span>Кому:</span>'+['denis','zhanna'].map(function(p){return '<label class="chk"><input type="checkbox" data-t="'+esc(it.id)+'" data-key="'+p+'"'+(it.who.indexOf(p)>-1?' checked':'')+'>'+NM[p]+'</label>'}).join('')+
+      '<button class="sw" type="button" role="switch" aria-checked="'+(it.on?'true':'false')+'" aria-label="Включить напоминание" data-t="'+esc(it.id)+'" data-key="on"></button></div></section>'}
+  function listRender(kind){
     if(!rem)return;
-    var sel='',ae=document.activeElement,items=(rem.custom||[]).filter(function(x){return x&&Array.isArray(x.who)});
-    if(ae&&tmpList.contains(ae)&&ae.dataset){if(ae.dataset.edit)sel='[data-edit="'+ae.dataset.edit+'"]';else if(ae.dataset.del)sel='[data-del="'+ae.dataset.del+'"]';else if(ae.dataset.t&&ae.dataset.key)sel='[data-t="'+ae.dataset.t+'"][data-key="'+ae.dataset.key+'"]'}
-    var up=items.filter(function(i){return!tmpPast(i)}),pa=items.filter(tmpPast).reverse();
-    tmpList.innerHTML=items.length?up.concat(pa).map(tmpItemHtml).join(''):'<p class="empty">Временных напоминаний пока нет.</p>';
-    if(sel){var n=tmpList.querySelector(sel);if(n)n.focus()}}
+    var k=K(kind),rec=kind==='rec',sel='',ae=document.activeElement,items=((rec?rem.recurring:rem.custom)||[]).filter(function(x){return x&&Array.isArray(x.who)});
+    if(ae&&k.list.contains(ae)&&ae.dataset){if(ae.dataset.edit)sel='[data-edit="'+ae.dataset.edit+'"]';else if(ae.dataset.del)sel='[data-del="'+ae.dataset.del+'"]';else if(ae.dataset.t&&ae.dataset.key)sel='[data-t="'+ae.dataset.t+'"][data-key="'+ae.dataset.key+'"]'}
+    if(rec)k.list.innerHTML=items.length?items.map(recItemHtml).join(''):'<p class="empty">Повторяющихся напоминаний пока нет.</p>';
+    else{var up=items.filter(function(i){return!tmpPast(i)}),pa=items.filter(tmpPast).reverse();
+      k.list.innerHTML=items.length?up.concat(pa).map(tmpItemHtml).join(''):'<p class="empty">Временных напоминаний пока нет.</p>'}
+    if(sel){var n=k.list.querySelector(sel);if(n)n.focus()}}
+  function tmpRender(){listRender('tmp')}
+  function listsRender(){listRender('tmp');listRender('rec')}
   function tmpSave(req){remMsg.textContent='…';
     req.then(function(r){if(r.status===401){showLogin();return}if(!r.ok)throw 0;
       return r.json().then(function(j){rem=j;remSync();remMsg.textContent='Сохранено ✓'})
     }).catch(function(){remMsg.textContent='Не удалось сохранить';remLoad()})}
-  function tmpSet(id,key,v){var it=tmpFind(id);if(!it)return;
+  function lFind(kind,id){return kind==='rec'?recFind(id):tmpFind(id)}
+  function lSet(kind,id,key,v){var it=lFind(kind,id);if(!it)return;
     if(key==='on')it.on=v;else{var i=it.who.indexOf(key);if(v&&i<0)it.who.push(key);if(!v&&i>-1)it.who.splice(i,1)}
-    tmpRender();tmpSave(api('PUT','/api/custom',{id:id,key:key,value:v}))}
-  function tmpDelete(id){if(!rem)return;rem.custom=(rem.custom||[]).filter(function(x){return x.id!==id});tmpRender();
-    tmpSave(api('DELETE','/api/custom?id='+encodeURIComponent(id)))}
-  tmpList.addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.disabled)return;
-    if(b.dataset.edit){tmpEdit(b.dataset.edit);return}
-    if(b.dataset.del){var id=b.dataset.del;
-      if(delArm!==id){delArm=id;clearTimeout(delTimer);delTimer=setTimeout(function(){delArm='';tmpRender()},4000);tmpRender();return}
-      clearTimeout(delTimer);delArm='';tmpDelete(id);return}
-    if(b.dataset.key==='on')tmpSet(b.dataset.t,'on',b.getAttribute('aria-checked')!=='true')});
-  tmpList.addEventListener('change',function(e){var t=e.target;if(t.type!=='checkbox')return;
-    var it=tmpFind(t.dataset.t);if(!it)return;
-    if(!t.checked&&it.who.length===1){t.checked=true;remMsg.textContent='Нужно выбрать хотя бы одного получателя.';return}
-    tmpSet(t.dataset.t,t.dataset.key,t.checked)});
+    listRender(kind);tmpSave(api('PUT',K(kind).url,{id:id,key:key,value:v}))}
+  function lDelete(kind,id){if(!rem)return;var keep=function(x){return x.id!==id};
+    if(kind==='rec')rem.recurring=(rem.recurring||[]).filter(keep);else rem.custom=(rem.custom||[]).filter(keep);
+    listRender(kind);tmpSave(api('DELETE',K(kind).url+'?id='+encodeURIComponent(id)))}
+  function bindList(kind){var list=K(kind).list;
+    list.addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.disabled)return;
+      if(b.dataset.edit){if(kind==='rec')recEdit(b.dataset.edit);else tmpEdit(b.dataset.edit);return}
+      if(b.dataset.del){var id=b.dataset.del;
+        if(delArm!==id){delArm=id;clearTimeout(delTimer);delTimer=setTimeout(function(){delArm='';listsRender()},4000);listRender(kind);return}
+        clearTimeout(delTimer);delArm='';lDelete(kind,id);return}
+      if(b.dataset.key==='on')lSet(kind,b.dataset.t,'on',b.getAttribute('aria-checked')!=='true')});
+    list.addEventListener('change',function(e){var t=e.target;if(t.type!=='checkbox')return;
+      var it=lFind(kind,t.dataset.t);if(!it)return;
+      if(!t.checked&&it.who.length===1){t.checked=true;remMsg.textContent='Нужно выбрать хотя бы одного получателя.';return}
+      lSet(kind,t.dataset.t,t.dataset.key,t.checked)})}
+  bindList('tmp');bindList('rec');
 
   /* ---------- вид: блоки / компактно ---------- */
   var compact=ls('view')==='compact',vsw=$('vsw');

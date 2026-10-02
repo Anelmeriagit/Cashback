@@ -93,12 +93,15 @@ export const REMINDERS = {
 // { users: { denis: {chat, username}, ... },
 //   settings: { cashback: { on, denis, zhanna }, ... },
 //   cycles: { 'halva:2026-10': { done: { denis: true }, sent: { '2026-10-05': ['denis'] } } },
-//   custom: [ { id, date: '2026-10-05', slot: 'day'|'evening', text, who: ['denis'], on: true, sent: { denis: true } } ] }
+//   custom: [ { id, date: '2026-10-05', slot: 'day'|'evening', text, who: ['denis'], on: true, sent: { denis: true } } ],
+//   recurring: [ { id, date: '2026-10-05' (первое срабатывание), every: 'week'|'2weeks'|'month', slot, text, who, on, sent: { '2026-10-12': ['denis'] } } ] }
 const PATH = 'bot/state.json';
 export const CUSTOM_MAX = 50; // не больше 50 временных напоминаний
-const fresh = () => ({ users: {}, settings: {}, cycles: {}, custom: [] });
+export const RECURRING_MAX = 30; // не больше 30 повторяющихся
+export const EVERY = ['week', '2weeks', 'month']; // каждую неделю / каждые 2 недели / каждый месяц
+const fresh = () => ({ users: {}, settings: {}, cycles: {}, custom: [], recurring: [] });
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
-const norm = (raw) => ({ users: obj(raw && raw.users), settings: obj(raw && raw.settings), cycles: obj(raw && raw.cycles), custom: Array.isArray(raw && raw.custom) ? raw.custom : [] });
+const norm = (raw) => ({ users: obj(raw && raw.users), settings: obj(raw && raw.settings), cycles: obj(raw && raw.cycles), custom: Array.isArray(raw && raw.custom) ? raw.custom : [], recurring: Array.isArray(raw && raw.recurring) ? raw.recurring : [] });
 const isMissing = (e) => /not\s*found|404/i.test(String(e && (e.message || e.name)));
 
 export async function readState() {
@@ -173,9 +176,36 @@ export function publicCustom(state) {
     .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
 }
 
+// Повторяющиеся: срабатывают в стартовую дату и дальше каждые 7 / 14 дней или раз в месяц в то же число
+// (если такого числа в месяце нет, например 31-го, то в последний день месяца).
+const dayNum = (s) => Math.round(Date.parse(s + 'T00:00:00Z') / 864e5);
+export function recDue(it, date) {
+  if (!it || typeof it.date !== 'string' || typeof date !== 'string' || date < it.date) return false;
+  if (it.every === 'week') return (dayNum(date) - dayNum(it.date)) % 7 === 0;
+  if (it.every === '2weeks') return (dayNum(date) - dayNum(it.date)) % 14 === 0;
+  if (it.every === 'month') return +date.slice(8, 10) === Math.min(+it.date.slice(8, 10), daysIn(date.slice(0, 7)));
+  return false;
+}
+export function recNext(it, from) {
+  for (let i = 0; i < 70; i++) { const d = iso(Date.parse(from + 'T00:00:00Z') + i * 864e5); if (recDue(it, d)) return d; }
+  return '';
+}
+export function publicRecurring(state) {
+  const today = mskNow().date;
+  const tomorrow = iso(Date.parse(today + 'T00:00:00Z') + 864e5);
+  return state.recurring
+    .filter((it) => it && typeof it.id === 'string' && EVERY.includes(it.every) && Array.isArray(it.who) && typeof it.text === 'string' && typeof it.date === 'string')
+    .map((it) => {
+      const st = it.sent && Array.isArray(it.sent[today]) ? it.sent[today] : [];
+      const doneToday = recDue(it, today) && it.who.length > 0 && it.who.every((p) => st.includes(p));
+      return { id: it.id, date: it.date, every: it.every, slot: it.slot, text: it.text, who: it.who.slice(), on: it.on !== false, next: recNext(it, doneToday ? tomorrow : today) };
+    })
+    .sort((a, b) => { const x = (a.next || '9') + (a.slot === 'evening' ? 'b' : 'a'), y = (b.next || '9') + (b.slot === 'evening' ? 'b' : 'a'); return x < y ? -1 : x > y ? 1 : 0; });
+}
+
 export const linkedOf = (state) => ({ denis: !!(state.users.denis && state.users.denis.chat), zhanna: !!(state.users.zhanna && state.users.zhanna.chat) });
 
-export const pubState = (state) => ({ settings: publicSettings(state), linked: linkedOf(state), custom: publicCustom(state) });
+export const pubState = (state) => ({ settings: publicSettings(state), linked: linkedOf(state), custom: publicCustom(state), recurring: publicRecurring(state) });
 
 // Что отправить сегодня. Меняет state: помечает отправки заранее, чтобы повторный запуск cron не дублировал.
 export function planDue(state, now, slot) {
@@ -212,6 +242,22 @@ export function planDue(state, now, slot) {
       out.push({ id: 'custom', cid: it.id, custom: true, text: it.text, p, chat, date: now.date });
     }
   }
+  // Повторяющиеся: если сегодня день срабатывания и слот подходит; отметки по датам хранятся в sent[дата] = [кому].
+  for (const it of state.recurring) {
+    if (!it || it.on === false || !Array.isArray(it.who) || !recDue(it, now.date)) continue;
+    if (slot && it.slot !== slot) continue;
+    for (const p of it.who) {
+      const chat = state.users[p] && state.users[p].chat;
+      if (!chat) continue;
+      const sa = it.sent && typeof it.sent === 'object' ? it.sent : (it.sent = {});
+      const sent = Array.isArray(sa[now.date]) ? sa[now.date] : (sa[now.date] = []);
+      if (sent.includes(p)) continue;
+      sent.push(p);
+      out.push({ id: 'recurring', cid: it.id, custom: true, rec: true, text: it.text, p, chat, date: now.date });
+    }
+  }
+  const oldSent = iso(Date.parse(now.date + 'T00:00:00Z') - 60 * 864e5);
+  for (const it of state.recurring) if (it && it.sent && typeof it.sent === 'object') for (const d of Object.keys(it.sent)) if (d < oldSent) delete it.sent[d];
   // Старше 60 дней — убираем, чтобы список не рос.
   const old = iso(Date.parse(now.date + 'T00:00:00Z') - 60 * 864e5);
   state.custom = state.custom.filter((it) => it && typeof it.date === 'string' && it.date >= old);
@@ -352,6 +398,13 @@ export async function notifyAdmin(text) {
 export function unclaim(fails) {
   return mutate((st) => {
     for (const f of fails) {
+      if (f.rec) {
+        const it = st.recurring.find((x) => x && x.id === f.cid);
+        const s = it && it.sent && it.sent[f.date];
+        const i = Array.isArray(s) ? s.indexOf(f.p) : -1;
+        if (i > -1) s.splice(i, 1);
+        continue;
+      }
       if (f.custom) {
         const it = st.custom.find((x) => x && x.id === f.cid);
         if (it && it.sent) delete it.sent[f.p];
