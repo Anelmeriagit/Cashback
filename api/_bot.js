@@ -218,7 +218,7 @@ export function planDue(state, now, slot) {
   const out = [];
   for (const [id, R] of Object.entries(REMINDERS)) {
     if (slot && (R.slot || 'day') !== slot) continue;
-    // текущий и прошлый месяц: последнее напоминание «кешбэка» в коротком феврале выпадает на 1 марта
+    // текущий и прошлый месяц: последнее напоминание «кэшбэка» в коротком феврале выпадает на 1 марта
     for (const cm of [now.month, shiftMonth(now.month, -1)]) {
       if (R.firstCycle && cm < R.firstCycle) continue;
       if (!R.dates(cm).includes(now.date)) continue;
@@ -289,7 +289,7 @@ export async function isFilled(person, month) {
   return list.some((b) => (b.items || []).some((i) => i.cat && i.pct));
 }
 
-/* ---------- текст «Показать кешбэки» ---------- */
+/* ---------- текст «Показать кэшбэки» ---------- */
 const BANK_NAMES = { otp: 'ОТП', alfa: 'Альфа', vtb: 'ВТБ', halva: 'Халва', sber: 'Сбер' };
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const monthLabel = (k) => { const [y, m] = k.split('-'); return MONTHS[+m - 1] + ' ' + y; };
@@ -403,7 +403,7 @@ export function aliasSet(state, key, cat, title, now) {
 }
 export function aliasDel(state, key) { if (own(state.alias, key)) delete state.alias[key]; }
 
-// Категории для кнопок: сначала те, где в этом месяце кто-то заполнил кешбэк (по алфавиту), затем остальные (порядок CATS, потом свои).
+// Категории для кнопок: сначала те, где в этом месяце кто-то заполнил кэшбэк (по алфавиту), затем остальные (порядок CATS, потом свои).
 // list — все названия, f — сколько из них «заполненных» (они идут первыми).
 export function catChoices(doc, mo) {
   const all = validCats(doc && doc.custom);
@@ -503,7 +503,7 @@ export function safeEq(a, b) {
 }
 
 // Меню бота (кнопка «Меню» слева от поля ввода)
-export const BOT_COMMANDS = [{ command: 'cashback', description: 'Показать кешбэки' }];
+export const BOT_COMMANDS = [{ command: 'cashback', description: 'Показать кэшбэки' }];
 
 // Доступ к служебным адресам (/api/cron, /api/tg-setup): тот же CRON_SECRET, который Vercel шлёт в cron.
 export function authed(req) {

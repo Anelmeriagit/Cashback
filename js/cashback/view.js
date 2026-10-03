@@ -1,4 +1,4 @@
-/* Кешбэк: сборка разметки (блоки, компактный вид, история, свои категории) и отрисовка */
+/* Кэшбэк: сборка разметки (блоки, компактный вид, история, свои категории) и отрисовка */
 import {$,esc,fp,cls,opts,IC,ls} from '../util.js';
 import {label} from '../time.js';
 import {BANKS,PEOPLE,PCTS,C,peek,list,blank,allCats,hasAny} from './state.js';
@@ -36,8 +36,8 @@ function colHtml(mo,p,name,ro){
       '<button class="x" data-act="delb"'+d+' aria-label="Удалить банк" type="button">'+IC.x+'</button></div><div class="body">'+
       b.items.map(function(r,j){var e=d+' data-r="'+j+'"';return '<div class="r"><select data-k="cat"'+e+cls(r.cat)+' aria-label="Категория">'+opts(allCats(),r.cat,'Категория')+'<option value="__new">＋ Своя категория…</option></select>'+
         '<select data-k="pct"'+e+cls(r.pct)+' aria-label="Процент">'+opts(PCTS.map(function(x){return{id:x,t:fp(x)+' %'}}),r.pct,'%')+'</select>'+
-        '<button class="x" data-act="delr"'+e+' aria-label="Удалить кешбэк" type="button">'+IC.x+'</button></div>'}).join('')+
-      '<div class="acts"><button class="btn" data-act="addr"'+d+' type="button">+ Кешбэк</button>'+
+        '<button class="x" data-act="delr"'+e+' aria-label="Удалить кэшбэк" type="button">'+IC.x+'</button></div>'}).join('')+
+      '<div class="acts"><button class="btn" data-act="addr"'+d+' type="button">+ Кэшбэк</button>'+
       (last?'<button class="btn" data-act="addb" data-mo="'+mo+'" data-p="'+p+'" type="button"'+(l.length>=Object.keys(BANKS).length?' disabled':'')+'>+ Банк</button>':'')+'</div></div></section>'}).join('')+'</div>';
 }
 /* ---------- компактный вид: категории по алфавиту, под каждой «Ж/Д + банки + процент» ---------- */

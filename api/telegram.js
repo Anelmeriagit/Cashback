@@ -20,7 +20,7 @@ async function onMessage(m) {
   if (!p || !m.chat || m.chat.type !== 'private') return;
   if (/^\/start(\s|@|$)/i.test(String(m.text || ''))) {
     await mutate((st) => { st.users[p] = { chat: m.chat.id, username: m.from.username, id: m.from.id }; });
-    await tg('sendMessage', { chat_id: m.chat.id, text: `Привет, ${PERSONS[p].name}! Бот подключён: напоминания будут приходить сюда. Список кешбэков — в меню слева от поля ввода.` });
+    await tg('sendMessage', { chat_id: m.chat.id, text: `Привет, ${PERSONS[p].name}! Бот подключён: напоминания будут приходить сюда. Список кэшбэков — в меню слева от поля ввода.` });
     return;
   }
   if (/^\/cashback(\s|@|$)/i.test(String(m.text || ''))) {

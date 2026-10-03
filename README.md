@@ -1,6 +1,6 @@
-# CashBack
+# Personal Helper
 
-Личный список кешбэков (Жанна и Денис) + напоминания в Telegram. Статика + Vercel Functions (`api/`), данные в Vercel Blob.
+Личный список кэшбэков (Жанна и Денис) + напоминания в Telegram. Статика + Vercel Functions (`api/`), данные в Vercel Blob.
 
 ## Переменные окружения (Vercel)
 | Имя | Назначение |

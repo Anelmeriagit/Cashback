@@ -1,4 +1,4 @@
-// Серверные проверки: api/_lib.js (сессии, вход, лимитер, документ кешбэков) и api/login.js.
+// Серверные проверки: api/_lib.js (сессии, вход, лимитер, документ кэшбэков) и api/login.js.
 // Запуск: node --import ./tests/register.mjs --test "tests/*.test.mjs"
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -160,7 +160,7 @@ test('login: пустое и битое тело не роняют обрабо�
   }
 });
 
-/* ---------- документ кешбэков ---------- */
+/* ---------- документ кэшбэков ---------- */
 test('clean: отбрасывает чужие банки, категории, проценты и опасные строки', () => {
   const doc = lib.clean({
     custom: ['Моя', 'моя', 'АЗС', '<b>x</b>', 'a"b', '  ', 'x'.repeat(41), 5],

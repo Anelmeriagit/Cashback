@@ -1,7 +1,7 @@
 {
-  "name": "CashBack",
-  "short_name": "CashBack",
-  "description": "Личный список кешбэков по банкам",
+  "name": "Personal Helper",
+  "short_name": "Helper",
+  "description": "Личный помощник: кэшбэки, напоминания, WiFi, агент",
   "lang": "ru",
   "start_url": "/",
   "display": "standalone",
