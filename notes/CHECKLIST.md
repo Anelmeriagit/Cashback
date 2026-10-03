@@ -41,3 +41,24 @@
 - [x] 2026-10-03: `api/_bot.js`: `authed` закрыт при незаданном `CRON_SECRET`, `safeEq` сверяет длину до сравнения, секрет вебхука `sha256("wh:"+токен)`. Остаточный риск: при пустом `TELEGRAM_BOT_TOKEN` секрет вебхука становится известной константой (бот при этом не может отправлять, риск мал).
 - [x] 2026-10-03: выгрузка в репозиторий сверена по git-хешам из `tree.txt`: все файлы совпали побайтно.
 - [x] 2026-10-03: `/PROJECT_NOTES.md` на боевом сайте отдаёт 404 (после переименования в `.vercelignore`).
+
+## Переменные окружения Vercel (только имена, значения не хранить в репозитории)
+| Имя | Назначение |
+|---|---|
+| `AUTH_USER` | общий логин |
+| `AUTH_HASH` | хэш пароля `соль:scrypt` (hex) |
+| `SESSION_SECRET` | отдельный случайный ключ подписи сессий (≥32 байт) |
+| `SESSION_VERSION` | номер сессий (по умолчанию `1`); смените, чтобы разлогинить все устройства |
+| `BLOB_READ_WRITE_TOKEN` | выдаёт Vercel при подключении Blob |
+| `TELEGRAM_BOT_TOKEN` | токен бота (запасное имя `BOT_TOKEN` читается, только если первой нет) |
+| `CRON_SECRET` | секрет для `/api/cron` и `/api/tg-setup`, только заголовком `Authorization: Bearer` |
+| `WIFI_SSID` | название домашней сети |
+| `WIFI_PASSWORD` | пароль сети (не нужен при `WIFI_SECURITY=nopass`) |
+| `WIFI_SECURITY` | необязательно: `WPA` (по умолчанию), `WEP` или `nopass` |
+| `WIFI_HIDDEN` | необязательно: `true`, если сеть скрытая (по умолчанию `false`) |
+
+## Служебные вызовы (PowerShell; `$secret` задать заново в каждом окне)
+$secret = 'ВАШ_CRON_SECRET'
+curl.exe -H "Authorization: Bearer $secret" https://<домен>/api/tg-setup             # вебхук и меню бота
+curl.exe -H "Authorization: Bearer $secret" "https://<домен>/api/cron?dry=1"          # сухой прогон
+curl.exe -H "Authorization: Bearer $secret" "https://<домен>/api/cron?slot=evening"   # ручной повтор вечернего слота (дневной: slot=day)
