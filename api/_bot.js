@@ -303,34 +303,66 @@ export function filledRows(doc, month, p) {
 }
 export const blocksOf = (doc, month, p) => filledRows(doc, month, p);
 
+// Заполненные строки месяца по категориям: { категория: [{p, bank, v}] }; люди в порядке PEOPLE_ORDER.
+export function catRows(doc, mo) {
+  const g = {};
+  for (const p of PEOPLE_ORDER) for (const r of filledRows(doc, mo, p)) (g[r.cat] = g[r.cat] || []).push({ p, bank: r.bank, v: r.v });
+  return g;
+}
+
+// Строки процентов одной категории (общая для /cashback и ответа по магазину): по убыванию процента,
+// банки с одним процентом в одной строке. ✅ у лучшего процента, если пар «человек + банк» больше одной (mark=false: без ✅).
+export function pctLines(rows, mark = true) {
+  const multi = new Set(rows.map((r) => r.p + '|' + r.bank)).size > 1;
+  const best = Math.max(...rows.map((r) => r.v));
+  const groups = new Map();
+  for (const r of rows) {
+    if (!groups.has(r.v)) groups.set(r.v, {});
+    const by = groups.get(r.v);
+    (by[r.p] = by[r.p] || []).push(BANK_NAMES[r.bank] || r.bank);
+  }
+  return [...groups.keys()].sort((a, b) => b - a).map((v) => {
+    const by = groups.get(v);
+    const who = PEOPLE_ORDER.filter((p) => by[p]).map((p) => PERSONS[p].name + ': ' + by[p].join(', ')).join(' · ');
+    return (mark && multi && v === best ? '✅ ' : '') + pctText(v) + ' — ' + who;
+  });
+}
+
 // Одно сообщение на месяц, как компактный вид на сайте:
 // категории по алфавиту, под каждой строки по убыванию процента; банки с одним процентом в одной строке.
 // ✅ у лучшего процента, если в категории есть из чего выбирать (больше одной пары «человек + банк»).
 export function monthText(doc, mo) {
-  const g = {};
-  for (const p of PEOPLE_ORDER) for (const r of filledRows(doc, mo, p)) (g[r.cat] = g[r.cat] || []).push({ p, bank: r.bank, v: r.v });
+  const g = catRows(doc, mo);
   const cats = Object.keys(g).sort((a, b) => a.localeCompare(b, 'ru'));
   const head = 'Кешбэки, ' + monthLabel(mo);
   if (!cats.length) return head + '\n\nПока не заполнено';
-  const blocks = cats.map((c) => {
-    const rows = g[c];
-    const multi = new Set(rows.map((r) => r.p + '|' + r.bank)).size > 1;
-    const best = Math.max(...rows.map((r) => r.v));
-    const groups = new Map();
-    for (const r of rows) {
-      if (!groups.has(r.v)) groups.set(r.v, {});
-      const by = groups.get(r.v);
-      (by[r.p] = by[r.p] || []).push(BANK_NAMES[r.bank] || r.bank);
-    }
-    const lines = [...groups.keys()].sort((a, b) => b - a).map((v) => {
-      const by = groups.get(v);
-      const who = PEOPLE_ORDER.filter((p) => by[p]).map((p) => PERSONS[p].name + ': ' + by[p].join(', ')).join(' · ');
-      return (multi && v === best ? '✅ ' : '') + pctText(v) + ' — ' + who;
-    });
-    return c + '\n' + lines.join('\n');
-  });
+  const blocks = cats.map((c) => c + '\n' + pctLines(g[c]).join('\n'));
   const missing = PEOPLE_ORDER.filter((p) => !filledRows(doc, mo, p).length).map((p) => PERSONS[p].name);
   return head + '\n\n' + blocks.join('\n\n') + (missing.length ? '\n\n' + missing.join(', ') + ': пока не заполнено' : '');
+}
+
+// Ответ на название магазина или категории. res — результат lookup() из _shops.js.
+// Одна категория: полный список как в /cashback. Несколько: по одной лучшей строке на категорию.
+// «Все покупки» добавляется запасной строкой (лучший процент), если это не сама запрошенная категория.
+export function shopText(doc, mo, res) {
+  if (res.kind === 'ambiguous') {
+    const n = res.names;
+    const who = n.length <= 4 ? n.join(' или ') : n.slice(0, 3).join(', ') + ' и ещё ' + (n.length - 3);
+    return 'Не знаю точно: ' + who + '. Напишите название полностью или название категории.';
+  }
+  if (res.kind !== 'found') return 'Не знаю такой магазин. Напишите название категории, например «Супермаркеты» или «Кафе и рестораны».';
+  const g = catRows(doc, mo);
+  const out = [];
+  if (res.cats.length === 1) {
+    const c = res.cats[0];
+    out.push(res.title === c ? c : res.title + ' · ' + c);
+    out.push(...(g[c] ? pctLines(g[c]) : ['Пока не заполнено']));
+  } else {
+    out.push(res.title);
+    for (const c of res.cats) out.push(c + ': ' + (g[c] ? pctLines(g[c])[0] : 'Пока не заполнено'));
+  }
+  if (!res.cats.includes('Все покупки') && g['Все покупки']) out.push('Все покупки: ' + pctLines(g['Все покупки'], false)[0]);
+  return out.join('\n');
 }
 
 // Тексты сообщений: текущий месяц и, если кто-то уже заполнил, следующий.

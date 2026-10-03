@@ -1,5 +1,6 @@
 import { loadDoc } from './_lib.js';
-import { PERSONS, REMINDERS, whoIs, tg, mutate, readState, markDone, isFilled, targetMonth, webhookSecret, safeEq, mskNow, cashbackTexts, chunkText } from './_bot.js';
+import { PERSONS, REMINDERS, whoIs, tg, mutate, readState, markDone, isFilled, targetMonth, webhookSecret, safeEq, mskNow, cashbackTexts, chunkText, shopText } from './_bot.js';
+import { lookup } from './_shops.js';
 
 const CM_RE = /^\d{4}-\d{2}$/;
 
@@ -20,7 +21,18 @@ async function onMessage(m) {
       return tg('sendMessage', { chat_id: m.chat.id, text: 'Не удалось загрузить данные с сайта. Попробуйте чуть позже.' });
     }
     for (const t of texts) for (const part of chunkText(t)) await tg('sendMessage', { chat_id: m.chat.id, text: part });
+    return;
   }
+  // Обычный текст = название магазина или категории. Команды и сообщения без текста молча игнорируем.
+  const text = typeof m.text === 'string' ? m.text.trim() : '';
+  if (!text || text[0] === '/') return;
+  let doc;
+  try { doc = (await loadDoc(process.env.AUTH_USER)).doc; }
+  catch (e) {
+    console.error(e);
+    return tg('sendMessage', { chat_id: m.chat.id, text: 'Не удалось загрузить данные с сайта. Попробуйте чуть позже.' });
+  }
+  await tg('sendMessage', { chat_id: m.chat.id, text: shopText(doc, mskNow().month, lookup(text, doc.custom)) });
 }
 
 async function onCallback(cq) {
