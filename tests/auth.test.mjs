@@ -1,14 +1,14 @@
 // Серверные проверки: api/_lib.js (сессии, вход, лимитер, документ кешбэков) и api/login.js.
-// Запуск: node --import ./tests/loader/register.mjs --test tests/server/
+// Запуск: node --import ./tests/register.mjs --test "tests/*.test.mjs"
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { __reset, put } from '../stubs/blob.mjs';
-import { mockReq, mockRes, setEnv, makeAuthHash, fakeClock, TEST_USER, TEST_PASS } from '../helpers.mjs';
+import { __reset, put } from './blob.mjs';
+import { mockReq, mockRes, setEnv, makeAuthHash, fakeClock, TEST_USER, TEST_PASS } from './helpers.mjs';
 
 setEnv();
-const lib = await import('../../api/_lib.js');
-const login = (await import('../../api/login.js')).default;
+const lib = await import('../api/_lib.js');
+const login = (await import('../api/login.js')).default;
 
 beforeEach(() => { __reset(); setEnv(); });
 

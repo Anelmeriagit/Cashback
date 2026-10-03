@@ -1,7 +1,7 @@
 // Статический сервер для проверки интерфейса без деплоя.
 // Отдаёт корень репозитория с заголовками из vercel.json (CSP берётся из первого правила, где она есть)
 // и подставляет мок-API из fixtures.mjs вместо /api/*.
-// Запуск вручную: node tests/ui/serve.mjs [корень] [порт]
+// Запуск вручную: node tests/serve.mjs [корень] [порт]
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { routes } from './fixtures.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_ROOT = path.resolve(HERE, '../..');
+const DEFAULT_ROOT = path.resolve(HERE, '..');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8' };
 
 // Заголовки безопасности из vercel.json: все заголовки первого правила, где есть Content-Security-Policy.

@@ -1,6 +1,6 @@
 // Заглушка @vercel/blob для проверок: хранилище в памяти.
 // Повторяет то, что нужно коду проекта: get / put / head / del / list, ETag, ifMatch, allowOverwrite.
-// Подключается через tests/loader/register.mjs, код в api/ менять не нужно.
+// Подключается через tests/register.mjs, код в api/ менять не нужно.
 const store = new Map();
 let seq = 0;
 

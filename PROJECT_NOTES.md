@@ -38,7 +38,7 @@
 ## Карта файлов
 **Корень:** `index.html`, `style.css`, `theme.js` (тема без мигания), `sw.js` (только уведомления, ничего не кеширует), `manifest.webmanifest`, `vercel.json`, `README.md`.
 
-**Служебное:** `tests/` (проверки без деплоя, см. «Как работать»), `.vercelignore` (заметки, `tests/`, `README.md` не раздаются как статика и не попадают в деплой), `notes/` (эти заметки).
+**Служебное:** `tests/` (все файлы лежат в одной папке, без подпапок; проверки без деплоя, см. «Как работать»), `.vercelignore` (файл начинается с точки; заметки, `tests/`, `README.md` не должны раздаваться как статика и попадать в деплой), `notes/` (эти заметки).
 
 **api/:** `_lib.js` (общее, `clean`, сессия), `data.js`, `reminders.js`, `custom.js`, `recurring.js`, `agent.js`, `wifi.js`, `cron.js`, `telegram.js`, `_bot.js`, `_qr.js`, `tg-setup.js`, `login.js`, `logout.js`.
 
@@ -63,20 +63,20 @@
 - Нужна история решений → `notes/CHANGELOG.md` (по умолчанию не читать)
 
 ## Не просмотрено
-`theme.js`, `api/logout.js`, `manifest.webmanifest`. Проверить в них, нет ли секретов в коде. В `api/_bot.js` не проверены `webhookSecret()`, `safeEq()`, `authed()` (см. чек-лист). (`api/telegram.js`, `api/tg-setup.js`, `api/login.js`, `_lib.js`, `wifi.js`, `index.html`, `style.css`, `vercel.json` просмотрены 2026-10-03: состояние пишет только через `mutate`, секретов в коде нет.)
+`theme.js`, `api/logout.js`, `manifest.webmanifest`. Проверить в них, нет ли секретов в коде. (`api/telegram.js`, `api/tg-setup.js`, `api/login.js`, `_lib.js`, `wifi.js`, `index.html`, `style.css`, `vercel.json` просмотрены 2026-10-03: состояние пишет только через `mutate`, секретов в коде нет.)
 
 ## Как работать с проектом
 - В начале задачи: прочитать этот файл и нужные файлы из `notes/` по индексу, назвать, какие файлы кода нужны (списком, очень кратко), не просить весь репозиторий. Фронтенд по модулям: просить только нужные файлы из `js/` по карте выше.
 - После своих правок пользователь коммитит, пушит и нажимает Sync now на репозитории в знаниях проекта.
 - Проверка перед выдачей: `node --check` для JS.
-  - Сервер на заглушке Blob: `node --import ./tests/loader/register.mjs --test "tests/server/*.test.mjs"` (кавычки нужны). Заглушка подменяет `@vercel/blob` без правок кода; новые проверки класть в `tests/server/`.
-  - Интерфейс: `node tests/ui/smoke.mjs` (Chromium, CSP из `vercel.json`, мок-API из `tests/ui/fixtures.mjs`; страницы × 360/1280 px × светлая/тёмная тема; ловит CSP, ошибки JS, незамоканный API, горизонтальную прокрутку). Playwright в `package.json` не добавлять: `npm i --no-save playwright && npx playwright install chromium`. Для нового эндпоинта дописать заглушку в `fixtures.mjs`.
+  - Сервер на заглушке Blob: `node --import ./tests/register.mjs --test "tests/*.test.mjs"` (кавычки нужны). Заглушка `tests/blob.mjs` подменяет `@vercel/blob` без правок кода (через `register.mjs` и `hooks.mjs`); новые проверки класть в `tests/*.test.mjs`, общие помощники в `tests/helpers.mjs`.
+  - Интерфейс: `node tests/smoke.mjs` (Chromium, CSP из `vercel.json`, мок-API из `tests/fixtures.mjs`, сервер стенда `tests/serve.mjs`; страницы × 360/1280 px × светлая/тёмная тема; ловит CSP, ошибки JS, незамоканный API, горизонтальную прокрутку). Playwright в `package.json` не добавлять: `npm i --no-save playwright && npx playwright install chromium`. Для нового эндпоинта дописать заглушку в `fixtures.mjs`.
   - Непроверенное записывать в `notes/CHECKLIST.md`.
 - Формат записи в «Журнале»: до трёх строк (дата, что изменено, какие файлы; отдельно «не проверялось», если это важно после деплоя). Счёт проверок не пишем. В ядре хранятся последние 5 записей, остальные переносятся в `notes/CHANGELOG.md`.
 
 ## Журнал (последние 5)
-- 2026-10-03: «Агент»: свой браузер вводом названия (`agNewName`, `cleanApp`, `AGENT_NAME_MAX`), исправлено налезание стрелки списка на «мин». Файлы: `app.js`, `api/agent.js`, `style.css`. Проверено: заглушка Blob, Chromium с CSP. Не проверялось: касание на телефоне.
 - 2026-10-03: «Агент»: подсветка ближайшего сброса, «Сбросить», уведомление браузера в момент сброса (Telegram не используется, тариф Hobby). Файлы: `api/agent.js`, новый `sw.js`, `app.js`, `style.css`. Проверено: заглушка Blob, Chromium с CSP на 1280 и 360 px. Не проверялось: реальные Android и iPhone (особенно iOS-приложение на экране «Домой»), закрытый браузер (по замыслу не работает). После деплоя: включить уведомления, поставить сброс на ближайшие 10 минут.
 - 2026-10-03: рефакторинг фронтенда: `app.js` разбит на 15 ES-модулей в `js/`, в `index.html` вместо `app.js` подключён `js/main.js` (`type="module"`), `app.js` удалить. Поведение не менялось. Проверено: `node --check`, типизатор, Chromium с CSP `script-src 'self'` и мок-API (DOM и запросы старого и нового кода идентичны). Не проверялось: реальная CSP из `vercel.json`, после деплоя убедиться, что модули грузятся (нет ошибок CSP в консоли). Стенд лежит не в репозитории.
 - 2026-10-03: просмотрены `api/login.js`, `api/_lib.js`: секретов в коде нет, `AUTH_HASH` нужен для проверки пароля (scrypt) и как запасной ключ сессий; из `_lib.js` убрана устаревшая строка комментария. Проверено: `node --check`, поиск секретов. Не проверялось: вход на живом Vercel; задана ли `SESSION_SECRET` в Vercel (если нет, задать: все устройства один раз разлогинятся).
 - 2026-10-03: просмотрены `api/telegram.js`, `api/tg-setup.js` (вебхук проверяет секретный заголовок через `safeEq`, `tg-setup` закрыт `authed`); добавлены `tests/` (заглушка Blob, 22 серверных теста для `login.js` и `_lib.js`, стенд Chromium с CSP из `vercel.json` и мок-API), `.vercelignore`, `notes/CHECKLIST.md`. Проверено: серверные тесты проходят и падают на 4 намеренных поломках кода; стенд ловит CSP, ошибки JS, незамоканный API и горизонтальную прокрутку на фиктивном сайте. Не проверялось: стенд на настоящих `index.html` и `vercel.json`, эффект `.vercelignore` на Vercel, `webhookSecret`/`safeEq`/`authed` в `_bot.js` (см. `notes/CHECKLIST.md`).
+- 2026-10-03: просмотрен `api/_bot.js` (`webhookSecret`, `safeEq`, `authed`: `authed` без `CRON_SECRET` не пускает; секрет вебхука при пустом токене бота становится константой); проверена выгрузка в репозиторий по хешам из `tree.txt`: содержимое совпало, но `tests/` лежит без подпапок, а `.vercelignore` назван `vercelignore` (без точки). Тесты приведены к плоской раскладке `tests/`. Проверено: 22 серверных теста и стенд на фиктивном сайте в плоской раскладке. Не проверялось: стенд на настоящих `index.html` и `vercel.json`; закрыт ли `/PROJECT_NOTES.md` после переименования `.vercelignore`.

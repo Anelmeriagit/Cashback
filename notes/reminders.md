@@ -43,7 +43,7 @@
 ## Безопасность бота
 - `POST /api/telegram` (`api/telegram.js`): сначала сверяет заголовок `X-Telegram-Bot-Api-Secret-Token` с `webhookSecret()` через `safeEq`, иначе `401`; чужие и групповые чаты игнорирует (`whoIs`, только приватные чаты); после проверки всегда отвечает `200`, чтобы Telegram не повторял обновление; при сбое отвечает пользователю коротким сообщением.
 - `GET /api/tg-setup`: только с `authed(req)` (`Authorization: Bearer <CRON_SECRET>`); регистрирует вебхук со `secret_token`, команды и кнопку меню, `drop_pending_updates: true`.
-- Не проверено: что `webhookSecret()`, `safeEq()`, `authed()` в `_bot.js` не пропускают пустой секрет (см. `notes/CHECKLIST.md`).
+- Секреты в `_bot.js`: `webhookSecret()` = `sha256('wh:' + токен бота)`; `authed` возвращает `false`, если `CRON_SECRET` не задан, принимает только заголовок `Authorization: Bearer`; `safeEq` сверяет длину до `timingSafeEqual`. Остаточный риск: при пустом `TELEGRAM_BOT_TOKEN` секрет вебхука становится известной константой (бот при этом не отправляет сообщения).
 
 ## Фронтенд
 - Модули: `js/reminders/state.js` (состояние `R`, `NM`), `js/reminders/index.js` (постоянные `REM`, настройки), `js/reminders/lists.js` (временные и повторяющиеся: форма и списки).

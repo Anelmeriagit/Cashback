@@ -2,7 +2,7 @@
 // Для каждой страницы × ширины 360/1280 × светлой/тёмной темы проверяет:
 //   нет нарушений CSP, нет ошибок JS и console.error, нет обращений к незамоканному API,
 //   нет горизонтальной прокрутки.
-// Запуск: node tests/ui/smoke.mjs [--root=<папка>]   (Playwright: npm i --no-save playwright && npx playwright install chromium)
+// Запуск: node tests/smoke.mjs [--root=<папка>]   (Playwright: npm i --no-save playwright && npx playwright install chromium)
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { start } from './serve.mjs';
