@@ -93,7 +93,7 @@ test('неизвестный → кнопки (сначала заполненн
   strip(calls);
   await send(cb(DENIS, press(other, 'Книги').callback_data));
   const ed = last(calls, 'editMessageText');
-  assert.equal(ed.body.text, 'Ларёк у дома · Книги\nПока не заполнено\nВсе покупки: 1% — Жанна: ОТП');
+  assert.equal(ed.body.text, 'Ларёк у дома · Книги\nУ вас нет категории книги\nВсе покупки: 1% — Жанна: ОТП');
   assert.deepEqual(btns(ed).map((b) => b.text), ['Не та категория', 'Сбросить к словарю']);
   assert.ok(calls.some((c) => c.method === 'answerCallbackQuery' && c.body.text === 'Запомнил для обоих'));
   const st = await state();
@@ -106,7 +106,7 @@ test('неизвестный → кнопки (сначала заполненн
   await send(msg(ZHANNA, 'ЛАРЁК, у дома!'));
   const z = last(calls, 'sendMessage');
   assert.equal(z.body.chat_id, 201);
-  assert.equal(z.body.text, 'Ларёк у дома · Книги\nПока не заполнено\nВсе покупки: 1% — Жанна: ОТП');
+  assert.equal(z.body.text, 'Ларёк у дома · Книги\nУ вас нет категории книги\nВсе покупки: 1% — Жанна: ОТП');
   assert.deepEqual(btns(z).map((b) => b.text), ['Не та категория', 'Сбросить к словарю']);
 });
 
@@ -324,7 +324,7 @@ test('прежнее поведение: /cashback, /start и кнопки на�
   const calls = mockTg(t);
   await send(msg(DENIS, '/cashback'));
   assert.equal(calls.length, 1);
-  assert.match(calls[0].body.text, /^Кешбэки, /);
+  assert.match(calls[0].body.text, /^Кэшбэки, /);
   assert.equal(calls[0].body.reply_markup, undefined);
   strip(calls);
   await send(cb(DENIS, 'later|halva|2026-10', { id: 101, type: 'private' }, 1));

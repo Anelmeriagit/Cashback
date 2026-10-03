@@ -340,12 +340,16 @@ export function pctLines(rows, mark = true) {
 export function monthText(doc, mo) {
   const g = catRows(doc, mo);
   const cats = Object.keys(g).sort((a, b) => a.localeCompare(b, 'ru'));
-  const head = 'Кешбэки, ' + monthLabel(mo);
+  const head = 'Кэшбэки, ' + monthLabel(mo);
   if (!cats.length) return head + '\n\nПока не заполнено';
   const blocks = cats.map((c) => c + '\n' + pctLines(g[c]).join('\n'));
   const missing = PEOPLE_ORDER.filter((p) => !filledRows(doc, mo, p).length).map((p) => PERSONS[p].name);
   return head + '\n\n' + blocks.join('\n\n') + (missing.length ? '\n\n' + missing.join(', ') + ': пока не заполнено' : '');
 }
+
+// «У вас нет категории фастфуд»: название категории с маленькой буквы, кроме аббревиатур (АЗС) — у них вторая буква тоже заглавная.
+const lowFirst = (c) => (c.length > 1 && c[1] !== c[1].toLowerCase() ? c : c.charAt(0).toLowerCase() + c.slice(1));
+export const noCategory = (c) => 'У вас нет категории ' + lowFirst(c);
 
 // Ответ на название магазина или категории. res — результат lookup() из _shops.js.
 // Одна категория: полный список как в /cashback. Несколько: по одной лучшей строке на категорию.
@@ -362,10 +366,10 @@ export function shopText(doc, mo, res) {
   if (res.cats.length === 1) {
     const c = res.cats[0];
     out.push(res.title === c ? c : res.title + ' · ' + c);
-    out.push(...(g[c] ? pctLines(g[c]) : ['Пока не заполнено']));
+    out.push(...(g[c] ? pctLines(g[c]) : [noCategory(c)]));
   } else {
     out.push(res.title);
-    for (const c of res.cats) out.push(c + ': ' + (g[c] ? pctLines(g[c])[0] : 'Пока не заполнено'));
+    for (const c of res.cats) out.push(c + ': ' + (g[c] ? pctLines(g[c])[0] : 'нет категории'));
   }
   if (!res.cats.includes('Все покупки') && g['Все покупки']) out.push('Все покупки: ' + pctLines(g['Все покупки'], false)[0]);
   return out.join('\n');

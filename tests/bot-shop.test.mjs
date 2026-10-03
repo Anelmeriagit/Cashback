@@ -69,7 +69,7 @@ test('текст → ответ: Жанна, опечатка и латиниц�
 test('своя категория с сайта понимается', async (t) => {
   const calls = mockTg(t);
   await send(msg(DENIS, 'моя категория'));
-  assert.equal(texts(calls)[0], 'Моя категория\nПока не заполнено\nВсе покупки: 1% — Жанна: ОТП');
+  assert.equal(texts(calls)[0], 'Моя категория\nУ вас нет категории моя категория\nВсе покупки: 1% — Жанна: ОТП');
 });
 
 test('неизвестный магазин → подсказка про категорию', async (t) => {
@@ -112,7 +112,7 @@ test('/cashback по-прежнему отвечает один раз и не �
   await send(msg(DENIS, '/cashback'));
   const out = texts(calls);
   assert.equal(out.length, 1);
-  assert.match(out[0], /^Кешбэки, /);
+  assert.match(out[0], /^Кэшбэки, /);
   assert.equal(out[0], bot.cashbackTexts((await lib.loadDoc(process.env.AUTH_USER)).doc, bot.mskNow().month)[0]);
 });
 
