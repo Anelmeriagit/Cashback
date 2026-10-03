@@ -1,0 +1,9 @@
+# Журнал (архив)
+
+По умолчанию не читать. Здесь старые записи из `PROJECT_NOTES.md`; в ядре остаются последние 5. Записи сжаты до 2–3 строк, счёт проверок убран. Подробности смотреть в истории коммитов.
+
+- 2026-10-02: создан файл, просмотрены `app.js`, `api/_lib.js`, `api/data.js`, `package.json`, `vercel.json`, `README.md`.
+- 2026-10-02: вкладка WiFi: новые `api/wifi.js`, `api/_qr.js`; правки `index.html`, `app.js`, `style.css`, `README.md`. Нужны `WIFI_SSID`, `WIFI_PASSWORD` в Vercel и redeploy. Проверено в Chromium с боевой CSP (QR читается декодером, тёмная тема, печать). Не проверялось: реальный iPhone/Android.
+- 2026-10-02: временные напоминания: новый `api/custom.js`; `_bot.js` (`custom`, `publicCustom`, `pubState`, `sendCustom`, блок в `planDue`, `unclaim`, `CUSTOM_MAX`), `cron.js`, `reminders.js`, `app.js`, `index.html`, `style.css`. Проверено: заглушка Blob, Chromium на 1280 и 360 px в обеих темах с CSP. Не проверялось: реальные Telegram и Blob (после деплоя создать напоминание на завтра и дождаться cron).
+- 2026-10-02: правка временных без пересоздания (текст, дата, время): `api/custom.js` (PUT без `key`), `app.js` (`tmpEdit`, `fmSave`, `fmDone`, `slotOff`), `style.css` (`.ra`, `.ed`, `.editing`, `.et`). Проверено: заглушка Blob, Chromium с CSP. Не проверялась ветка «сегодняшний слот ещё свободен» (в момент тестов было 21:00 МСК) и реальные Telegram/Blob.
+- 2026-10-02: колонки «Постоянные» / «Повторяющиеся» / «Временные» и повторяющиеся напоминания: новый `api/recurring.js`; `_bot.js` (`recurring`, `EVERY`, `RECURRING_MAX`, `recDue`, `recNext`, `publicRecurring`, блок в `planDue`, `unclaim`, `pubState`), `cron.js`, `index.html`, `app.js`, `style.css`. Проверено: заглушка Blob (неделя / 2 недели / месяц, 31-е в коротких месяцах, дубли, `unclaim`, сухой прогон, лимит), Chromium с CSP на 1280, 1000 и 360 px. Не проверялось: реальные Telegram и Blob (после деплоя создать повторяющееся на завтра и дождаться cron).
