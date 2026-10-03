@@ -3,13 +3,16 @@
 // Подключается через tests/register.mjs, код в api/ менять не нужно.
 const store = new Map();
 let seq = 0;
+let failPut = false;
 
-export function __reset() { store.clear(); seq = 0; }
+export function __reset() { store.clear(); seq = 0; failPut = false; }
+export function __failPut(on) { failPut = !!on; } // имитация отказа записи
 export function __keys() { return [...store.keys()].sort(); }
 
 const err = (name, message) => { const e = new Error(message); e.name = name; return e; };
 
 export async function put(path, body, opts = {}) {
+  if (failPut) throw err('BlobError', 'Vercel Blob: simulated outage');
   const cur = store.get(path);
   if (opts.ifMatch && (!cur || cur.etag !== opts.ifMatch)) throw err('BlobPreconditionFailedError', 'Vercel Blob: Precondition failed: ETag mismatch.');
   if (cur && !opts.allowOverwrite) throw err('BlobError', 'Vercel Blob: This blob already exists, use `allowOverwrite: true` to overwrite it.');

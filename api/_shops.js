@@ -202,3 +202,41 @@ export function lookup(query, custom, shops) {
   }
   return { kind: 'unknown' };
 }
+
+/* ---------- обучение: общие псевдонимы и исправления (этап 2) ---------- */
+// alias — объект состояния бота: { ключ: { c: категория, t: название для показа, at: время записи } }.
+// Ключ: для магазина из словаря norm(его названия) (исправление действует на любое написание), для неизвестного запроса norm(текста).
+const OWN = Object.prototype.hasOwnProperty;
+export const own = (o, k) => (o && typeof o === 'object' && OWN.call(o, k) ? o[k] : null);
+export const shopKey = (s) => norm(String(s == null ? '' : s).slice(0, 100)).slice(0, 60);
+// Название для показа из текста пользователя: пробелы сжаты, первая буква заглавная.
+export function disp(s) {
+  const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, 60);
+  return t ? t[0].toUpperCase() + t.slice(1) : '';
+}
+export const validCats = (custom) => [...new Set(CATS.concat(Array.isArray(custom) ? custom.filter((c) => typeof c === 'string' && c) : []))];
+
+// Поиск с учётом псевдонимов. Возвращает { res, key, alias }:
+//  res — как у lookup(); key — ключ для псевдонима (null: категория, «не знаю точно» или пустой запрос — учить нечему);
+//  alias — запись псевдонима по этому ключу, если есть (даже если категория уже удалена с сайта; тогда она не применяется).
+// Словарь важнее псевдонима для неизвестных: псевдоним срабатывает, только если словарь не нашёл ничего.
+// Для найденного магазина исправление перекрывает словарь.
+export function resolveShop(query, custom, alias) {
+  const res = lookup(query, custom);
+  const ok = validCats(custom);
+  if (res.kind === 'found') {
+    if (res.byCat) return { res, key: null, alias: null };
+    const key = norm(res.title);
+    const a = own(alias, key);
+    if (a && typeof a.c === 'string' && ok.includes(a.c)) return { res: { kind: 'found', title: res.title, cats: [a.c], byCat: false }, key, alias: a };
+    return { res, key, alias: a };
+  }
+  if (res.kind === 'unknown') {
+    const key = shopKey(query);
+    if (!key) return { res, key: null, alias: null };
+    const a = own(alias, key);
+    if (a && typeof a.c === 'string' && ok.includes(a.c)) return { res: { kind: 'found', title: a.t || disp(query), cats: [a.c], byCat: false }, key, alias: a };
+    return { res, key, alias: a };
+  }
+  return { res, key: null, alias: null };
+}

@@ -1,8 +1,18 @@
 import { loadDoc } from './_lib.js';
-import { PERSONS, REMINDERS, whoIs, tg, mutate, readState, markDone, isFilled, targetMonth, webhookSecret, safeEq, mskNow, cashbackTexts, chunkText, shopText } from './_bot.js';
-import { lookup } from './_shops.js';
+import { PERSONS, REMINDERS, whoIs, tg, mutate, readState, markDone, isFilled, targetMonth, webhookSecret, safeEq, mskNow, cashbackTexts, chunkText, shopText, pendingGet, pendingPut, aliasSet, aliasDel, catChoices, shopKb, pickKb } from './_bot.js';
+import { resolveShop, disp } from './_shops.js';
 
 const CM_RE = /^\d{4}-\d{2}$/;
+const SHOP_CB = /^(sk|so|sp|sf|sr|sb)\|[0-9a-f]{8}(\|\d{1,3})?$/; // кнопки ответа по магазину (см. shopKb/pickKb в _bot.js)
+const HINT = '\nИли выберите категорию кнопкой ниже: запомню для обоих.';
+
+// Текст и кнопки ответа по результату поиска. id — ожидающий запрос (есть, если удалось записать состояние).
+function shopView(doc, mo, r, id, ch) {
+  const text = shopText(doc, mo, r.res);
+  if (id && r.key && r.res.kind === 'found') return { text, kb: shopKb(id, !!r.alias) };
+  if (id && r.key && r.res.kind === 'unknown' && ch) return { text: text + HINT, kb: pickKb(id, ch.list, ch.f, false, false) };
+  return { text, kb: [] };
+}
 
 async function onMessage(m) {
   const p = await whoIs(m.from);
@@ -32,12 +42,104 @@ async function onMessage(m) {
     console.error(e);
     return tg('sendMessage', { chat_id: m.chat.id, text: 'Не удалось загрузить данные с сайта. Попробуйте чуть позже.' });
   }
-  await tg('sendMessage', { chat_id: m.chat.id, text: shopText(doc, mskNow().month, lookup(text, doc.custom)) });
+  const mo = mskNow().month;
+  let r, id = null, ch = null;
+  try {
+    r = resolveShop(text, doc.custom, (await readState()).state.alias);
+    const known = r.key && (r.res.kind === 'found' || r.res.kind === 'unknown');
+    // Запоминаем запрос ради кнопок. Если состояние не записалось, ответ всё равно уходит, просто без кнопок.
+    if (known) {
+      if (r.res.kind === 'unknown') ch = catChoices(doc, mo);
+      id = await mutate((st) => pendingPut(st, text.slice(0, 100), Date.now(), ch ? { l: ch.list, f: ch.f, m: null } : { m: null }));
+    }
+  } catch (e) {
+    console.error(e);
+    id = null;
+    if (!r) r = resolveShop(text, doc.custom, {});
+  }
+  const v = shopView(doc, mo, r, id, ch);
+  const body = { chat_id: m.chat.id, text: v.text };
+  if (v.kb.length) body.reply_markup = { inline_keyboard: v.kb };
+  await tg('sendMessage', body);
+}
+
+// Кнопки ответа по магазину: «Не та категория», выбор категории, «Другая…», «Сбросить к словарю». Вызывается после whoIs.
+async function onShopCb(cq) {
+  const ans = (extra) => tg('answerCallbackQuery', { callback_query_id: cq.id, ...extra }).catch(() => {});
+  const msg = cq.message;
+  if (!msg || !msg.chat) return ans();
+  if (msg.chat.type !== 'private') return;
+  const [act, id, ix] = String(cq.data).split('|');
+  const chat = msg.chat.id, mid = msg.message_id;
+  const swallow = (e) => { if (!/not modified/i.test(e.message)) throw e; };
+  const edit = (text, kb) => tg('editMessageText', { chat_id: chat, message_id: mid, text, reply_markup: { inline_keyboard: kb || [] } }).catch(swallow);
+  const editKb = (kb) => tg('editMessageReplyMarkup', { chat_id: chat, message_id: mid, reply_markup: { inline_keyboard: kb } }).catch(swallow);
+  const now = Date.now();
+  const { state } = await readState();
+  const pd = pendingGet(state, id, now);
+  if (!pd) {
+    await ans({ text: 'Запрос устарел. Напишите название магазина ещё раз.', show_alert: true });
+    return editKb([]).catch(() => {});
+  }
+  // Показ списков работает по снимку из pd и сайт не читает.
+  if (act === 'so' || act === 'sp') {
+    if (!Array.isArray(pd.l) || typeof pd.f !== 'number') return ans();
+    await ans();
+    return editKb(pickKb(id, pd.l, pd.f, act === 'so', pd.m === 'fix'));
+  }
+  let doc;
+  try { doc = (await loadDoc(process.env.AUTH_USER)).doc; }
+  catch (e) {
+    console.error(e);
+    return ans({ text: 'Не удалось загрузить данные с сайта. Попробуйте чуть позже.', show_alert: true });
+  }
+  const mo = mskNow().month;
+  const r = resolveShop(pd.q, doc.custom, state.alias);
+  if (!r.key || (r.res.kind !== 'found' && r.res.kind !== 'unknown')) {
+    await ans({ text: 'Запрос устарел. Напишите название магазина ещё раз.', show_alert: true });
+    return editKb([]).catch(() => {});
+  }
+  const title = r.res.kind === 'found' ? r.res.title : disp(pd.q);
+
+  if (act === 'sb') { // отмена: вернуть ответ как был
+    await ans();
+    const v = shopView(doc, mo, r, id, null);
+    return edit(v.text, v.kb);
+  }
+  if (act === 'sf') { // «Не та категория»: свежий список категорий
+    const ch = catChoices(doc, mo);
+    const nid = await mutate((st) => pendingPut(st, pd.q, now, { l: ch.list, f: ch.f, m: 'fix' }));
+    await ans();
+    return edit('Какая категория у «' + title + '»?', pickKb(nid, ch.list, ch.f, false, true));
+  }
+  if (act === 'sk') { // выбор категории: сохраняем общий псевдоним
+    const c = Array.isArray(pd.l) && /^\d{1,3}$/.test(ix || '') ? pd.l[+ix] : null;
+    if (typeof c !== 'string' || !catChoices(doc, mo).list.includes(c)) {
+      return ans({ text: 'Такой категории уже нет. Начните заново: «Не та категория».', show_alert: true });
+    }
+    const alias = await mutate((st) => { aliasSet(st, r.key, c, title, now); pendingPut(st, pd.q, now, { m: null }); return st.alias; });
+    const v = shopView(doc, mo, resolveShop(pd.q, doc.custom, alias), id, null);
+    await ans({ text: 'Запомнил для обоих' });
+    return edit(v.text, v.kb);
+  }
+  if (act === 'sr') { // сбросить к словарю: убрать псевдоним
+    const out = await mutate((st) => {
+      aliasDel(st, r.key);
+      const r2 = resolveShop(pd.q, doc.custom, st.alias);
+      const ch = r2.res.kind === 'unknown' ? catChoices(doc, mo) : null;
+      return { r2, ch, id: pendingPut(st, pd.q, now, ch ? { l: ch.list, f: ch.f, m: null } : { m: null }) };
+    });
+    const v = shopView(doc, mo, out.r2, out.id, out.ch);
+    await ans({ text: 'Сброшено к словарю' });
+    return edit(v.text, v.kb);
+  }
+  return ans();
 }
 
 async function onCallback(cq) {
   const p = await whoIs(cq.from);
-  if (!p) return;
+  if (!p) return; // чужие нажатия: полная тишина
+  if (SHOP_CB.test(String(cq.data || ''))) return onShopCb(cq);
   const ans = (extra) => tg('answerCallbackQuery', { callback_query_id: cq.id, ...extra }).catch(() => {});
   const [act, id, cm] = String(cq.data || '').split('|');
   const R = REMINDERS[id];
